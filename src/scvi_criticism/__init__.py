@@ -1,7 +1,13 @@
+import logging
 from importlib.metadata import version
 
-from . import pl, pp, tl
+from ._ppc import PPC, run_ppc
+from ._settings import settings
 
-__all__ = ["pl", "pp", "tl"]
+settings.verbosity = logging.INFO
+# prevent double output
+logger = logging.getLogger("scvi_criticism")
+logger.propagate = False
 
 __version__ = version("scvi-criticism")
+__all__ = ["PPC", "run_ppc"]
