@@ -1,23 +1,23 @@
 {
-    "template": "https://github.com/scverse/cookiecutter-scverse",
-    "commit": "4a894ef90a7852d85c40bce6ee6466d73af31968",
-    "checkout": null,
-    "context": {
-        "cookiecutter": {
-            "project_name": "scvi-criticism",
-            "package_name": "scvi_criticism",
-            "project_description": "Evaluation metrics for scvi-tools models",
-            "author_full_name": "Valeh Valiollah Pour Amiri",
-            "author_email": "valehvpa@berkeley.edu",
-            "github_user": "YosefLab",
-            "project_repo": "https://github.com/YosefLab/scvi-criticism",
-            "license": "BSD 3-Clause License",
-            "_copy_without_render": [
-                ".github/workflows/**.yaml",
-                "docs/_templates/autosummary/**.rst"
-            ],
-            "_template": "https://github.com/scverse/cookiecutter-scverse"
-        }
-    },
-    "directory": null
+  "template": "https://github.com/scverse/cookiecutter-scverse",
+  "commit": "28f47a97470826ca5000df24fd272e0d32d1c6fa",
+  "checkout": "v0.1.0",
+  "context": {
+    "cookiecutter": {
+      "project_name": "scvi-criticism",
+      "package_name": "scvi_criticism",
+      "project_description": "Evaluation metrics for scvi-tools models",
+      "author_full_name": "Valeh Valiollah Pour Amiri",
+      "author_email": "valehvpa@berkeley.edu",
+      "github_user": "YosefLab",
+      "project_repo": "https://github.com/YosefLab/scvi-criticism",
+      "license": "BSD 3-Clause License",
+      "_copy_without_render": [
+        ".github/workflows/**.yaml",
+        "docs/_templates/autosummary/**.rst"
+      ],
+      "_template": "https://github.com/scverse/cookiecutter-scverse"
+    }
+  },
+  "directory": null
 }
