@@ -71,8 +71,6 @@ class PPC:
         """Gathers posterior predictive samples."""
         self.models = models_dict
         self.batch_size = batch_size
-        # first_model = next(iter(models_dict.keys()))
-        # self.dataset = models_dict[first_model].adata
 
         for m, model in self.models.items():
             pp_counts = model.posterior_predictive_sample(
@@ -91,7 +89,7 @@ class PPC:
             cell_wise: Calculate for each cell across genes if True, else do the reverse.
         """
         axis = 1 if cell_wise is True else 0
-        identifier = "cv_cell" if cell_wise is True else "cv_gene"
+        identifier = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
         df = pd.DataFrame()
         pp_samples = self.posterior_predictive_samples.items()
         for m, samples in pp_samples:
@@ -112,7 +110,7 @@ class PPC:
         self.metrics[identifier] = df
 
     def plot_cv(self, model_name: str, cell_wise: bool = True):
-        """Placeholder docstring. TODO complete"""
+        """Placeholder docstring. TODO complete."""
         metric = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
         model_metric = self.metrics[metric][model_name].values
         raw_metric = self.metrics[metric]["Raw"].values
@@ -154,10 +152,10 @@ class PPC:
             if len(to_add) != raw.shape[1]:
                 raise ValueError()
             feat_df[m] = to_add
-        self.metrics["mannwhitneyu"] = feat_df
+        self.metrics[METRIC_MWU] = feat_df
 
     def plot_mwu(self, model_name: str):
-        """Placeholder docstring. TODO complete"""
+        """Placeholder docstring. TODO complete."""
         model_metric = self.metrics[METRIC_MWU][model_name].values
         title = f"model={model_name} | metric={METRIC_MWU} | n_cells={self.raw_counts.shape[0]}"
         plt.subplots(2, 1, figsize=(10, 12.5), sharex=False)
@@ -174,7 +172,7 @@ class PPC:
         de_method: str = "t-test",
         var_gene_names_col: Optional[str] = None,
     ):
-        """Placeholder docstring. TODO complete"""
+        """Placeholder docstring. TODO complete."""
         # run DE with the raw counts
         adata_raw = AnnData(X=self.raw_counts.tocsr(), obs=adata_obs_raw, var=adata_var_raw)
         norm_sum = 1e4
@@ -196,9 +194,9 @@ class PPC:
             else:
                 var_names[group] = rgg_names[group].values[:n_genes].tolist()
 
-        self.metrics["diff_exp"] = {}
-        self.metrics["diff_exp"]["adata_raw"] = adata_raw.copy()
-        self.metrics["diff_exp"]["var_names"] = var_names
+        self.metrics[METRIC_DIFF_EXP] = {}
+        self.metrics[METRIC_DIFF_EXP]["adata_raw"] = adata_raw.copy()
+        self.metrics[METRIC_DIFF_EXP]["var_names"] = var_names
 
         # get the dotplot values for adata_raw
         rgg_dp_raw = sc.pl.rank_genes_groups_dotplot(
@@ -213,6 +211,28 @@ class PPC:
             return_fig=True,
         )
 
+        # compare the dotplots in terms of lfc and fraction values
+        def compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, kind):
+            assert kind in ["lfc", "fraction"]
+            dp_kind = "color" if kind == "lfc" else "fraction"
+            df_raw = _get_dp_as_df(rgg_dp_raw, dp_kind)
+            df_approx = _get_dp_as_df(rgg_dp_approx, dp_kind)
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_raw"] = df_raw
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_approx"] = df_approx
+
+            # mtr stands for metric
+            mae_mtr, mae_mtr_mean = _get_df_mae(df_approx, df_raw)
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_mae"] = mae_mtr
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_mae_mean"] = mae_mtr_mean
+
+            pearson_mtr, pearson_mtr_mean = _get_df_corr_coeff(df_approx, df_raw, "pearson")
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_pearson"] = pearson_mtr
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_pearson_mean"] = pearson_mtr_mean
+
+            spearman_mtr, spearman_mtr_mean = _get_df_corr_coeff(df_approx, df_raw, "spearman")
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_spearman"] = spearman_mtr
+            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_spearman_mean"] = spearman_mtr_mean
+
         # get posterior predictive samples from the model (aka approx. counts)
         pp_samples = self.posterior_predictive_samples.items()
         for m, samples in pp_samples:
@@ -225,8 +245,8 @@ class PPC:
                 warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
                 sc.tl.rank_genes_groups(adata_approx, de_groupby, use_raw=False, method=de_method)
 
-            self.metrics["diff_exp"][m] = {}
-            self.metrics["diff_exp"][m]["adata_approx"] = adata_approx.copy()
+            self.metrics[METRIC_DIFF_EXP][m] = {}
+            self.metrics[METRIC_DIFF_EXP][m]["adata_approx"] = adata_approx.copy()
 
             rgg_dp_approx = sc.pl.rank_genes_groups_dotplot(
                 adata_approx,
@@ -240,58 +260,100 @@ class PPC:
                 return_fig=True,
             )
 
-            # compare the dotplots in terms of lfc and fraction values
-            lfc_df_raw = _get_dp_as_df(rgg_dp_raw)
-            lfc_df_approx = _get_dp_as_df(rgg_dp_approx)
-            lfc_mae, lfc_mae_mean = _get_df_mae(lfc_df_approx, lfc_df_raw)
-            lfc_pearson, lfc_pearson_mean = _get_df_corr_coeff(lfc_df_approx, lfc_df_raw, "pearson")
-            lfc_spearman, lfc_spearman_mean = _get_df_corr_coeff(lfc_df_approx, lfc_df_raw, "spearman")
-            self.metrics[METRIC_DIFF_EXP][m]["lfc_pearson"] = lfc_pearson
-            self.metrics[METRIC_DIFF_EXP][m]["lfc_spearman"] = lfc_spearman
-            self.metrics[METRIC_DIFF_EXP][m]["lfc_mae"] = lfc_mae
-            self.metrics[METRIC_DIFF_EXP][m]["lfc_pearson_mean"] = lfc_pearson_mean
-            self.metrics[METRIC_DIFF_EXP][m]["lfc_spearman_mean"] = lfc_spearman_mean
-            self.metrics[METRIC_DIFF_EXP][m]["lfc_mae_mean"] = lfc_mae_mean
+            compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, "lfc")
+            compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, "fraction")
+
+    def _plot_diff_exp_scatters(self, title: str, df_1, df_2, pearson: pd.Series, spearman: pd.Series, mae: pd.Series):
+        # https://engineeringfordatascience.com/posts/matplotlib_subplots/
+        # define subplot grid - TODO fix this to work in the generic case where we dont know # of groups
+        figsize = (
+            20.0,
+            20.0,
+        )
+        fig, axs = plt.subplots(nrows=8, ncols=4, figsize=figsize)
+        plt.subplots_adjust(hspace=1)
+        fig.suptitle(title, fontsize=18, y=0.95)
+        axs_lst = axs.ravel()
+        # plot all
+        i = 0
+        for group in df_1.index:  # TODO allow to plot a subset of the groups?
+            ax = axs_lst[i]
+            i += 1
+            full = df_1.loc[group]
+            latent = df_2.loc[group]
+            ax.scatter(full, latent)
+            _add_identity(ax, color="r", ls="--", alpha=0.5)
+            ax.set_title(
+                f"{group} \n pearson={pearson[group]:.2f} - spearman={spearman[group]:.2f} - mae={mae[group]:.2f}"
+            )
+        plt.show()
 
     def plot_diff_exp(
         self,
         model_name: str,
         var_gene_names_col: Optional[str] = None,
         var_names_subset: Optional[Sequence[str]] = None,
+        plot_kind: str = "dots",
     ):
-        """Placeholder docstring. TODO complete"""
+        """Placeholder docstring. TODO complete."""
+        assert plot_kind in ["dots", "lfc_scatters", "fraction_scatters"]
+
         adata_approx = self.metrics[METRIC_DIFF_EXP][model_name]["adata_approx"]
         adata_raw = self.metrics[METRIC_DIFF_EXP]["adata_raw"]
         var_names = self.metrics[METRIC_DIFF_EXP]["var_names"]
         if var_names_subset is not None:
             var_names = {k: v for k, v in var_names.items() if k in var_names_subset}
 
-        # TODO add plot title
-        sc.pl.rank_genes_groups_dotplot(
-            adata_raw,
-            values_to_plot="logfoldchanges",
-            # min_logfoldchange=3,
-            vmax=7,
-            vmin=-7,
-            cmap="bwr",
-            dendrogram=False,
-            gene_symbols=var_gene_names_col,
-            var_names=var_names,
-        )
+        if plot_kind == "dots":
+            # plot dotplots for raw and approx.
+            # TODO add plot title
+            sc.pl.rank_genes_groups_dotplot(
+                adata_raw,
+                values_to_plot="logfoldchanges",
+                # min_logfoldchange=3,
+                vmax=7,
+                vmin=-7,
+                cmap="bwr",
+                dendrogram=False,
+                gene_symbols=var_gene_names_col,
+                var_names=var_names,
+            )
 
-        # plot, using var_names, i.e., the N highly scored genes from the DE result on adata_raw
-        # we do this because the N highly scored genes (per group) in the adata_approx are not the same as adata_raw. this
-        # discrepancy is evaluated elsewhere
-        sc.pl.rank_genes_groups_dotplot(
-            adata_approx,
-            values_to_plot="logfoldchanges",
-            vmax=7,
-            vmin=-7,
-            cmap="bwr",
-            dendrogram=False,
-            gene_symbols=var_gene_names_col,
-            var_names=var_names,
-        )
+            # plot, using var_names, i.e., the N highly scored genes from the DE result on adata_raw
+            # we do this because the N highly scored genes (per group) in the adata_approx are not the same as adata_raw. this
+            # discrepancy is evaluated elsewhere
+            sc.pl.rank_genes_groups_dotplot(
+                adata_approx,
+                values_to_plot="logfoldchanges",
+                vmax=7,
+                vmin=-7,
+                cmap="bwr",
+                dendrogram=False,
+                gene_symbols=var_gene_names_col,
+                var_names=var_names,
+            )
+        elif plot_kind == "lfc_scatters" or plot_kind == "fraction_scatters":
+            kind = "lfc" if plot_kind == "lfc_scatters" else "fraction"
+            df_raw = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_df_raw"]
+            df_approx = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_df_approx"]
+            mae_mtr = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_mae"]
+            mae_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_mae_mean"]
+            pearson_mtr = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_pearson"]
+            pearson_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_pearson_mean"]
+            spearman_mtr = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_spearman"]
+            spearman_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_spearman_mean"]
+            # log mae, mse, pearson corr, spearman corr
+            # TODO update name for the case of fraction
+            title = f"{kind} (1 vs all) gene expressions across groups, x=raw DE, y=approx. DE, red line=identity"
+            logger.info(
+                f"{kind} (1 vs all) gene expressions across groups:\n"
+                f"Mean Absolute Error={mae_mtr_mean:.2f},\n"
+                f"Pearson correlation={pearson_mtr_mean:.2f}\n"
+                f"Spearman correlation={spearman_mtr_mean:.2f}"
+            )
+            self._plot_diff_exp_scatters(title, df_raw, df_approx, pearson_mtr, spearman_mtr, mae_mtr)
+        else:
+            raise ValueError("Unknown plot_kind: {plot_kind}")
 
 
 def run_ppc(
@@ -301,10 +363,9 @@ def run_ppc(
     n_samples: int,
     layer: Optional[str] = None,
     custom_indices: Optional[Union[int, Sequence[int]]] = None,
-    do_plot: bool = True,
     **metric_specific_kwargs,
 ):
-    """Compute the given PPC metric for the given model, data and indices. Plot results by default"""
+    """Compute the given PPC metric for the given model, data and indices."""
     # determine indices to use
     if isinstance(custom_indices, list):
         indices = custom_indices
@@ -322,19 +383,16 @@ def run_ppc(
 
     # calculate metrics and plot if asked to
     if (metric == METRIC_CV_CELL) or (metric == METRIC_CV_GENE):
-        cw = metric == "cv_cell"
+        cw = metric == METRIC_CV_CELL
         sp.coefficient_of_variation(cell_wise=cw)
-        if do_plot:
-            sp.plot_cv(model_name, cell_wise=cw)
+        # sp.plot_cv(model_name, cell_wise=cw)
     elif metric == METRIC_MWU:
         sp.mann_whitney_u()
-        if do_plot:
-            sp.plot_mwu(model_name)
+        # sp.plot_mwu(model_name)
     elif metric == METRIC_DIFF_EXP:
         # adata.obs is needed for de_groupby
         sp.diff_exp(adata[indices].obs, adata.var, **metric_specific_kwargs)
-        if do_plot:
-            sp.plot_diff_exp(model_name, **metric_specific_kwargs)
+        # sp.plot_diff_exp(model_name, **metric_specific_kwargs)
     else:
         raise NotImplementedError(f"Unknown metric: {metric}")
 
