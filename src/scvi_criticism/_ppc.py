@@ -14,16 +14,27 @@ from scipy.stats import mannwhitneyu, pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error as mae
 from sklearn.metrics import mean_squared_error as mse
 
-from ._utils import _add_identity, _get_df_corr_coeff, _get_df_mae, _get_dp_as_df
+from ._de_utils import _get_all_de_groups, _get_top_n_genes_per_group
+from ._utils import (
+    _add_identity,
+    _get_binary_array_from_selected_genes,
+    _get_df_corr_coeff,
+    _get_df_mae,
+    _get_dp_as_df,
+    _get_precision_recall_f1,
+)
 
 METRIC_CV_CELL = "cv_cell"
 METRIC_CV_GENE = "cv_gene"
 METRIC_MWU = "mannwhitneyu"
 METRIC_DIFF_EXP = "diff_exp"
+DEFAULT_DE_N_TOP_GENES = 2
+DEFAULT_DE_N_TOP_GENES_OVERLAP = 100
 
 logger = logging.getLogger(__name__)
 
 
+# TODO put plotting function in a separate class PPCPlot
 class PPC:
     """Posterior predictive checks for comparing single-cell generative models"""
 
@@ -164,6 +175,67 @@ class PPC:
             title=title,
         )
 
+    def _diff_exp_compare_dotplots(self, rgg_dp_raw, rgg_dp_approx, m, kind):
+        # compare the dotplots in terms of lfc/fraction values depending on `kind`
+
+        assert kind in ["lfc", "fraction"]
+        dp_kind = "color" if kind == "lfc" else "fraction"
+        df_raw = _get_dp_as_df(rgg_dp_raw, dp_kind)
+        df_approx = _get_dp_as_df(rgg_dp_approx, dp_kind)
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_raw"] = df_raw
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_approx"] = df_approx
+
+        # mtr stands for metric
+        mae_mtr, mae_mtr_mean = _get_df_mae(df_raw, df_approx)
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_mae"] = mae_mtr
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_mae_mean"] = mae_mtr_mean
+
+        # some genes belong to more than one group (i.e. are markers for more than one group)
+        # in this case df_raw (and same for df_approx) will have two or more columns with exactly
+        # the same values. The call below removes those duplicates -- default behavior -- before computing
+        # the correlation.
+        pearson_mtr, pearson_mtr_mean = _get_df_corr_coeff(df_raw, df_approx, "pearson")
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_pearson"] = pearson_mtr
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_pearson_mean"] = pearson_mtr_mean
+
+        spearman_mtr, spearman_mtr_mean = _get_df_corr_coeff(df_raw, df_approx, "spearman")
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_spearman"] = spearman_mtr
+        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_spearman_mean"] = spearman_mtr_mean
+
+    def _diff_exp_compute_gene_overlaps(
+        self,
+        adata_raw: AnnData,
+        adata_approx: AnnData,
+        m: str,
+        var_gene_names_col: Optional[str] = None,
+        n_top_genes_overlap: Optional[int] = None,
+    ):
+        # compute a dataframe containing precision, recall, and f1 values that measure the overlap
+        # (as described below) between the unordered set of the top `n_top_genes_overlap` of adata_raw
+        # and adata_approx
+
+        # first sanity check a few things that the code below assumes
+        assert np.all(adata_raw.var.gene_names == adata_approx.var.gene_names)
+        assert _get_all_de_groups(adata_raw) == _get_all_de_groups(adata_approx)
+
+        # get the N highly scored genes from the DE result on the raw adata and approx data
+        n_genes = n_top_genes_overlap or min(adata_raw.n_vars, DEFAULT_DE_N_TOP_GENES_OVERLAP)
+        top_genes_raw = _get_top_n_genes_per_group(adata_raw, n_genes, var_gene_names_col)
+        top_genes_approx = _get_top_n_genes_per_group(adata_approx, n_genes, var_gene_names_col)
+        # get precision/recall while considering the unordered set of top ranked genes between
+        # raw and approx DE results. To do that we "binarize" the gene selections: we create two
+        # binary vectors (one for raw, one for approx) where a 1 in the vector means gene was
+        # selected.
+        groups = _get_all_de_groups(adata_raw)
+        df = pd.DataFrame(index=groups, columns=["precision", "recall", "f1"])
+        for g in groups:
+            ground_truth = _get_binary_array_from_selected_genes(adata_raw, top_genes_raw[g])
+            pred = _get_binary_array_from_selected_genes(adata_approx, top_genes_approx[g])
+            assert np.sum(ground_truth) == n_genes and np.sum(pred) == n_genes
+            prf = _get_precision_recall_f1(ground_truth, pred)
+            df.loc[g] = prf[0], prf[1], prf[2]
+        self.metrics[METRIC_DIFF_EXP][m]["gene_comparisons"] = df
+
     def diff_exp(
         self,
         adata_obs_raw: pd.DataFrame,
@@ -171,6 +243,8 @@ class PPC:
         de_groupby: str,
         de_method: str = "t-test",
         var_gene_names_col: Optional[str] = None,
+        n_top_genes: Optional[int] = None,
+        n_top_genes_overlap: Optional[int] = None,
     ):
         """Placeholder docstring. TODO complete."""
         # run DE with the raw counts
@@ -184,15 +258,8 @@ class PPC:
             sc.tl.rank_genes_groups(adata_raw, de_groupby, use_raw=False, method=de_method)
 
         # get the N highly scored genes from the DE result on the raw data
-        rgg = adata_raw.uns["rank_genes_groups"]
-        rgg_names = pd.DataFrame.from_records(rgg["names"])
-        n_genes = 2  # TODO parametrize?
-        var_names = {}
-        for group in rgg_names.columns:
-            if var_gene_names_col is not None:
-                var_names[group] = adata_raw.var.loc[rgg_names[group].values[:n_genes]]["gene_names"].values.tolist()
-            else:
-                var_names[group] = rgg_names[group].values[:n_genes].tolist()
+        n_genes = n_top_genes if n_top_genes is not None else DEFAULT_DE_N_TOP_GENES
+        var_names = _get_top_n_genes_per_group(adata_raw, n_genes, var_gene_names_col)
 
         self.metrics[METRIC_DIFF_EXP] = {}
         self.metrics[METRIC_DIFF_EXP]["adata_raw"] = adata_raw.copy()
@@ -211,36 +278,14 @@ class PPC:
             return_fig=True,
         )
 
-        # compare the dotplots in terms of lfc and fraction values
-        def compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, kind):
-            assert kind in ["lfc", "fraction"]
-            dp_kind = "color" if kind == "lfc" else "fraction"
-            df_raw = _get_dp_as_df(rgg_dp_raw, dp_kind)
-            df_approx = _get_dp_as_df(rgg_dp_approx, dp_kind)
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_raw"] = df_raw
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_approx"] = df_approx
-
-            # mtr stands for metric
-            mae_mtr, mae_mtr_mean = _get_df_mae(df_approx, df_raw)
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_mae"] = mae_mtr
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_mae_mean"] = mae_mtr_mean
-
-            pearson_mtr, pearson_mtr_mean = _get_df_corr_coeff(df_approx, df_raw, "pearson")
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_pearson"] = pearson_mtr
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_pearson_mean"] = pearson_mtr_mean
-
-            spearman_mtr, spearman_mtr_mean = _get_df_corr_coeff(df_approx, df_raw, "spearman")
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_spearman"] = spearman_mtr
-            self.metrics[METRIC_DIFF_EXP][m][f"{kind}_spearman_mean"] = spearman_mtr_mean
-
-        # get posterior predictive samples from the model (aka approx. counts)
+        # get posterior predictive samples from the model (aka approx counts)
         pp_samples = self.posterior_predictive_samples.items()
         for m, samples in pp_samples:
             adata_approx = AnnData(X=csr_matrix(samples), obs=adata_obs_raw, var=adata_var_raw)
             sc.pp.normalize_total(adata_approx, target_sum=norm_sum)
             sc.pp.log1p(adata_approx)
 
-            # run DE with the approx. counts
+            # run DE with the approx counts
             with warnings.catch_warnings():
                 warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
                 sc.tl.rank_genes_groups(adata_approx, de_groupby, use_raw=False, method=de_method)
@@ -260,12 +305,15 @@ class PPC:
                 return_fig=True,
             )
 
-            compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, "lfc")
-            compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, "fraction")
+            self._diff_exp_compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, "lfc")
+            self._diff_exp_compare_dotplots(rgg_dp_raw, rgg_dp_approx, m, "fraction")
 
-    def _plot_diff_exp_scatters(self, title: str, df_1, df_2, pearson: pd.Series, spearman: pd.Series, mae: pd.Series):
+            self._diff_exp_compute_gene_overlaps(adata_raw, adata_approx, m, var_gene_names_col, n_top_genes_overlap)
+
+    def _plot_diff_exp_scatters(self, title: str, df_1, df_2, mae: pd.Series, pearson: pd.Series, spearman: pd.Series):
         # https://engineeringfordatascience.com/posts/matplotlib_subplots/
-        # define subplot grid - TODO fix this to work in the generic case where we dont know # of groups
+        # define subplot grid
+        # TODO auto-determine this
         figsize = (
             20.0,
             20.0,
@@ -279,9 +327,9 @@ class PPC:
         for group in df_1.index:  # TODO allow to plot a subset of the groups?
             ax = axs_lst[i]
             i += 1
-            full = df_1.loc[group]
-            latent = df_2.loc[group]
-            ax.scatter(full, latent)
+            raw = df_1.loc[group]
+            approx = df_2.loc[group]
+            ax.scatter(raw, approx)
             _add_identity(ax, color="r", ls="--", alpha=0.5)
             ax.set_title(
                 f"{group} \n pearson={pearson[group]:.2f} - spearman={spearman[group]:.2f} - mae={mae[group]:.2f}"
@@ -293,10 +341,10 @@ class PPC:
         model_name: str,
         var_gene_names_col: Optional[str] = None,
         var_names_subset: Optional[Sequence[str]] = None,
-        plot_kind: str = "dots",
+        plot_kind: str = "dotplots",
     ):
         """Placeholder docstring. TODO complete."""
-        assert plot_kind in ["dots", "lfc_scatters", "fraction_scatters"]
+        assert plot_kind in ["dotplots", "lfc_comparisons", "fraction_comparisons", "gene_overlaps", "summary"]
 
         adata_approx = self.metrics[METRIC_DIFF_EXP][model_name]["adata_approx"]
         adata_raw = self.metrics[METRIC_DIFF_EXP]["adata_raw"]
@@ -304,13 +352,11 @@ class PPC:
         if var_names_subset is not None:
             var_names = {k: v for k, v in var_names.items() if k in var_names_subset}
 
-        if plot_kind == "dots":
-            # plot dotplots for raw and approx.
-            # TODO add plot title
+        if plot_kind == "dotplots":
+            # plot dotplots for raw and approx
             sc.pl.rank_genes_groups_dotplot(
                 adata_raw,
                 values_to_plot="logfoldchanges",
-                # min_logfoldchange=3,
                 vmax=7,
                 vmin=-7,
                 cmap="bwr",
@@ -320,8 +366,8 @@ class PPC:
             )
 
             # plot, using var_names, i.e., the N highly scored genes from the DE result on adata_raw
-            # we do this because the N highly scored genes (per group) in the adata_approx are not the same as adata_raw. this
-            # discrepancy is evaluated elsewhere
+            # we do this because the N highly scored genes (per group) in the adata_approx are not necessarily
+            # the same as adata_raw. this discrepancy is evaluated elsewhere (when looking at gene overlaps)
             sc.pl.rank_genes_groups_dotplot(
                 adata_approx,
                 values_to_plot="logfoldchanges",
@@ -332,26 +378,79 @@ class PPC:
                 gene_symbols=var_gene_names_col,
                 var_names=var_names,
             )
-        elif plot_kind == "lfc_scatters" or plot_kind == "fraction_scatters":
-            kind = "lfc" if plot_kind == "lfc_scatters" else "fraction"
+        elif plot_kind == "lfc_comparisons" or plot_kind == "fraction_comparisons":
+            kind = "lfc" if plot_kind == "lfc_comparisons" else "fraction"
             df_raw = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_df_raw"]
             df_approx = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_df_approx"]
             mae_mtr = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_mae"]
-            mae_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_mae_mean"]
             pearson_mtr = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_pearson"]
-            pearson_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_pearson_mean"]
             spearman_mtr = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_spearman"]
+            mae_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_mae_mean"]
+            pearson_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_pearson_mean"]
             spearman_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_spearman_mean"]
-            # log mae, mse, pearson corr, spearman corr
-            # TODO update name for the case of fraction
-            title = f"{kind} (1 vs all) gene expressions across groups, x=raw DE, y=approx. DE, red line=identity"
+            # log mae, pearson corr, spearman corr
+            if plot_kind == "lfc_comparisons":
+                desc = "lfc (1 vs all) gene expressions across groups"
+            else:
+                desc = "fractions of genes expressed per group across groups"
             logger.info(
-                f"{kind} (1 vs all) gene expressions across groups:\n"
+                f"{desc}:\n"
                 f"Mean Absolute Error={mae_mtr_mean:.2f},\n"
                 f"Pearson correlation={pearson_mtr_mean:.2f}\n"
                 f"Spearman correlation={spearman_mtr_mean:.2f}"
             )
-            self._plot_diff_exp_scatters(title, df_raw, df_approx, pearson_mtr, spearman_mtr, mae_mtr)
+            title = f"{desc}, x=raw DE, y=approx DE, red line=identity"
+            self._plot_diff_exp_scatters(title, df_raw, df_approx, mae_mtr, pearson_mtr, spearman_mtr)
+        elif plot_kind == "gene_overlaps":
+            # plot per-group F1 bar plots for the given n_genes
+            gene_comparisons = self.metrics[METRIC_DIFF_EXP][model_name]["gene_comparisons"]
+            mean_f1 = np.mean(gene_comparisons["f1"])
+            gene_comparisons.plot.bar(
+                y="f1",
+                figsize=(10, 2),  # TODO auto-determine figsize
+                title=f"Gene overlap F1 scores across groups - mean_f1 = {mean_f1:.2f}",
+                legend=False,
+            )
+        elif plot_kind == "summary":
+            lfc_pearson = self.metrics[METRIC_DIFF_EXP][model_name]["lfc_pearson"]
+            lfc_spearman = self.metrics[METRIC_DIFF_EXP][model_name]["lfc_spearman"]
+            fraction_pearson = self.metrics[METRIC_DIFF_EXP][model_name]["fraction_pearson"]
+            fraction_spearman = self.metrics[METRIC_DIFF_EXP][model_name]["fraction_spearman"]
+            gene_comparisons = self.metrics[METRIC_DIFF_EXP][model_name]["gene_comparisons"]["f1"]
+
+            # sanity check all indices are the same
+            from itertools import combinations
+
+            idxs = []
+            idxs.append(lfc_pearson.index)
+            idxs.append(lfc_spearman.index)
+            idxs.append(fraction_pearson.index)
+            idxs.append(fraction_spearman.index)
+            idxs.append(gene_comparisons.index)
+            for couple in combinations(idxs, 2):
+                assert couple[0].equals(couple[1])
+
+            cols = ["lfc_pearson", "lfc_spearman", "gene_frac_pearson", "gene_frac_spearman", "gene_overlap_f1"]
+            summary_df = pd.DataFrame(index=lfc_pearson.index, columns=cols)
+            summary_df["lfc_pearson"] = lfc_pearson
+            summary_df["lfc_spearman"] = lfc_spearman
+            summary_df["gene_frac_pearson"] = fraction_pearson
+            summary_df["gene_frac_spearman"] = fraction_spearman
+            summary_df["gene_overlap_f1"] = gene_comparisons
+
+            color = {
+                "lfc_pearson": "red",
+                "lfc_spearman": "orange",
+                "gene_frac_pearson": "blue",
+                "gene_frac_spearman": "magenta",
+                "gene_overlap_f1": "green",
+            }
+            summary_df.plot.barh(
+                figsize=(2, 20),  # TODO auto-determine figsize
+                width=0.8,  # TODO auto-determine
+                color=color,
+            ).invert_yaxis()
+            plt.legend(bbox_to_anchor=(-0.25, 1), fontsize=9)  # TODO auto-determine
         else:
             raise ValueError("Unknown plot_kind: {plot_kind}")
 
@@ -381,18 +480,14 @@ def run_ppc(
     models_dict = {model_name: model}
     sp.store_posterior_predictive_samples(models_dict, indices=indices)
 
-    # calculate metrics and plot if asked to
+    # calculate metrics
     if (metric == METRIC_CV_CELL) or (metric == METRIC_CV_GENE):
-        cw = metric == METRIC_CV_CELL
-        sp.coefficient_of_variation(cell_wise=cw)
-        # sp.plot_cv(model_name, cell_wise=cw)
+        sp.coefficient_of_variation(cell_wise=(metric == METRIC_CV_CELL))
     elif metric == METRIC_MWU:
         sp.mann_whitney_u()
-        # sp.plot_mwu(model_name)
     elif metric == METRIC_DIFF_EXP:
         # adata.obs is needed for de_groupby
         sp.diff_exp(adata[indices].obs, adata.var, **metric_specific_kwargs)
-        # sp.plot_diff_exp(model_name, **metric_specific_kwargs)
     else:
         raise NotImplementedError(f"Unknown metric: {metric}")
 
