@@ -1,6 +1,7 @@
 import json
 import logging
 import warnings
+from itertools import combinations
 from typing import Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
@@ -17,7 +18,7 @@ from sklearn.metrics import mean_squared_error as mse
 from ._de_utils import _get_all_de_groups, _get_top_n_genes_per_group
 from ._utils import (
     _add_identity,
-    _get_binary_array_from_selected_genes,
+    _get_binary_array_from_selection,
     _get_df_corr_coeff,
     _get_df_mae,
     _get_dp_as_df,
@@ -215,7 +216,11 @@ class PPC:
         # and adata_approx
 
         # first sanity check a few things that the code below assumes
-        assert np.all(adata_raw.var.gene_names == adata_approx.var.gene_names)
+        gene_names_raw = adata_raw.var.index if var_gene_names_col is None else adata_raw.var[var_gene_names_col]
+        gene_names_approx = (
+            adata_approx.var.index if var_gene_names_col is None else adata_approx.var[var_gene_names_col]
+        )
+        assert np.all(gene_names_raw == gene_names_approx)
         assert _get_all_de_groups(adata_raw) == _get_all_de_groups(adata_approx)
 
         # get the N highly scored genes from the DE result on the raw adata and approx data
@@ -227,10 +232,10 @@ class PPC:
         # binary vectors (one for raw, one for approx) where a 1 in the vector means gene was
         # selected.
         groups = _get_all_de_groups(adata_raw)
-        df = pd.DataFrame(index=groups, columns=["precision", "recall", "f1"])
+        df = pd.DataFrame(index=groups, columns=["precision", "recall", "f1"], dtype=float)
         for g in groups:
-            ground_truth = _get_binary_array_from_selected_genes(adata_raw, top_genes_raw[g])
-            pred = _get_binary_array_from_selected_genes(adata_approx, top_genes_approx[g])
+            ground_truth = _get_binary_array_from_selection(gene_names_raw, top_genes_raw[g])
+            pred = _get_binary_array_from_selection(gene_names_approx, top_genes_approx[g])
             assert np.sum(ground_truth) == n_genes and np.sum(pred) == n_genes
             prf = _get_precision_recall_f1(ground_truth, pred)
             df.loc[g] = prf[0], prf[1], prf[2]
@@ -419,8 +424,6 @@ class PPC:
             gene_comparisons = self.metrics[METRIC_DIFF_EXP][model_name]["gene_comparisons"]["f1"]
 
             # sanity check all indices are the same
-            from itertools import combinations
-
             idxs = []
             idxs.append(lfc_pearson.index)
             idxs.append(lfc_spearman.index)
@@ -438,19 +441,21 @@ class PPC:
             summary_df["gene_frac_spearman"] = fraction_spearman
             summary_df["gene_overlap_f1"] = gene_comparisons
 
-            color = {
-                "lfc_pearson": "red",
-                "lfc_spearman": "orange",
-                "gene_frac_pearson": "blue",
-                "gene_frac_spearman": "magenta",
-                "gene_overlap_f1": "green",
-            }
-            summary_df.plot.barh(
-                figsize=(2, 20),  # TODO auto-determine figsize
-                width=0.8,  # TODO auto-determine
-                color=color,
-            ).invert_yaxis()
-            plt.legend(bbox_to_anchor=(-0.25, 1), fontsize=9)  # TODO auto-determine
+            summary_df.boxplot(figsize=(10, 8))
+
+            # color = {
+            #     "lfc_pearson": "red",
+            #     "lfc_spearman": "orange",
+            #     "gene_frac_pearson": "blue",
+            #     "gene_frac_spearman": "magenta",
+            #     "gene_overlap_f1": "green",
+            # }
+            # summary_df.plot.barh(
+            #     figsize=(2, 20),  # TODO auto-determine figsize
+            #     width=0.8,  # TODO auto-determine
+            #     color=color,
+            # ).invert_yaxis()
+            # plt.legend(bbox_to_anchor=(-0.25, 1), fontsize=9)  # TODO auto-determine
         else:
             raise ValueError("Unknown plot_kind: {plot_kind}")
 

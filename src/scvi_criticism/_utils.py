@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from anndata import AnnData
 from scipy.stats import pearsonr, spearmanr
 
 
@@ -82,7 +81,6 @@ def _get_precision_recall_f1(ground_truth: np.ndarray, pred: np.ndarray, do_roun
         return precision, recall, f1
 
 
-def _get_binary_array_from_selected_genes(adata: AnnData, selected_genes) -> np.ndarray:
-    all_genes = adata.var.gene_names
-    v = [0 if g not in selected_genes else 1 for g in all_genes]
-    return np.array(v)
+def _get_binary_array_from_selection(all_vals, selected_vals) -> np.ndarray:
+    b = [0 if val not in selected_vals else 1 for val in all_vals]
+    return np.array(b)
