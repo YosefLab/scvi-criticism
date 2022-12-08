@@ -2,6 +2,7 @@ import json
 import logging
 import warnings
 from itertools import combinations
+from math import ceil
 from typing import Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
@@ -122,7 +123,7 @@ class PPC:
         self.metrics[identifier] = df
 
     def plot_cv(self, model_name: str, cell_wise: bool = True):
-        """Placeholder docstring. TODO complete."""
+        """Placeholder docstring. TBD complete."""
         metric = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
         model_metric = self.metrics[metric][model_name].values
         raw_metric = self.metrics[metric]["Raw"].values
@@ -166,11 +167,12 @@ class PPC:
             feat_df[m] = to_add
         self.metrics[METRIC_MWU] = feat_df
 
-    def plot_mwu(self, model_name: str):
-        """Placeholder docstring. TODO complete."""
+    def plot_mwu(self, model_name: str, figure_size=None):
+        """Placeholder docstring. TBD complete."""
         model_metric = self.metrics[METRIC_MWU][model_name].values
         title = f"model={model_name} | metric={METRIC_MWU} | n_cells={self.raw_counts.shape[0]}"
-        plt.subplots(2, 1, figsize=(10, 12.5), sharex=False)
+        figsize = figure_size if figure_size is not None else (10, 12.5)
+        plt.subplots(2, 1, figsize=figsize, sharex=False)
         sns.boxplot(
             data=np.log10(model_metric),
             title=title,
@@ -251,7 +253,7 @@ class PPC:
         n_top_genes: Optional[int] = None,
         n_top_genes_overlap: Optional[int] = None,
     ):
-        """Placeholder docstring. TODO complete."""
+        """Placeholder docstring. TBD complete."""
         # run DE with the raw counts
         adata_raw = AnnData(X=self.raw_counts.tocsr(), obs=adata_obs_raw, var=adata_var_raw)
         norm_sum = 1e4
@@ -315,18 +317,27 @@ class PPC:
 
             self._diff_exp_compute_gene_overlaps(adata_raw, adata_approx, m, var_gene_names_col, n_top_genes_overlap)
 
-    def _plot_diff_exp_scatters(self, title: str, df_1, df_2, mae: pd.Series, pearson: pd.Series, spearman: pd.Series):
-        # https://engineeringfordatascience.com/posts/matplotlib_subplots/
+    def _plot_diff_exp_scatter_plots(
+        self,
+        title: str,
+        df_1,
+        df_2,
+        mae: pd.Series,
+        pearson: pd.Series,
+        spearman: pd.Series,
+        figure_size=None,
+    ):
         # define subplot grid
-        # TODO auto-determine this
-        figsize = (
-            20.0,
-            20.0,
-        )
-        fig, axs = plt.subplots(nrows=8, ncols=4, figsize=figsize)
-        plt.subplots_adjust(hspace=1)
-        fig.suptitle(title, fontsize=18, y=0.95)
+        # https://engineeringfordatascience.com/posts/matplotlib_subplots/
+        ncols = 4
+        nrows = ceil(len(df_1.index) / ncols)
+        figsize = figure_size if figure_size is not None else (20, 3 * nrows)
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, layout="constrained")
+        fig.suptitle(title, fontsize=18)
         axs_lst = axs.ravel()
+        # https://stackoverflow.com/a/66799199
+        for ax in axs_lst:
+            ax.set_axis_off()
         # plot all
         i = 0
         for group in df_1.index:  # TODO allow to plot a subset of the groups?
@@ -339,6 +350,7 @@ class PPC:
             ax.set_title(
                 f"{group} \n pearson={pearson[group]:.2f} - spearman={spearman[group]:.2f} - mae={mae[group]:.2f}"
             )
+            ax.set_axis_on()
         plt.show()
 
     def plot_diff_exp(
@@ -347,8 +359,9 @@ class PPC:
         var_gene_names_col: Optional[str] = None,
         var_names_subset: Optional[Sequence[str]] = None,
         plot_kind: str = "dotplots",
+        figure_size=None,
     ):
-        """Placeholder docstring. TODO complete."""
+        """Placeholder docstring. TBD complete."""
         assert plot_kind in ["dotplots", "lfc_comparisons", "fraction_comparisons", "gene_overlaps", "summary"]
 
         adata_approx = self.metrics[METRIC_DIFF_EXP][model_name]["adata_approx"]
@@ -395,7 +408,7 @@ class PPC:
             spearman_mtr_mean = self.metrics[METRIC_DIFF_EXP][model_name][f"{kind}_spearman_mean"]
             # log mae, pearson corr, spearman corr
             if plot_kind == "lfc_comparisons":
-                desc = "lfc (1 vs all) gene expressions across groups"
+                desc = "LFC (1 vs all) gene expressions across groups"
             else:
                 desc = "fractions of genes expressed per group across groups"
             logger.info(
@@ -405,16 +418,20 @@ class PPC:
                 f"Spearman correlation={spearman_mtr_mean:.2f}"
             )
             title = f"{desc}, x=raw DE, y=approx DE, red line=identity"
-            self._plot_diff_exp_scatters(title, df_raw, df_approx, mae_mtr, pearson_mtr, spearman_mtr)
+            self._plot_diff_exp_scatter_plots(
+                title, df_raw, df_approx, mae_mtr, pearson_mtr, spearman_mtr, figure_size=figure_size
+            )
         elif plot_kind == "gene_overlaps":
             # plot per-group F1 bar plots for the given n_genes
             gene_comparisons = self.metrics[METRIC_DIFF_EXP][model_name]["gene_comparisons"]
             mean_f1 = np.mean(gene_comparisons["f1"])
+            figsize = figure_size if figure_size is not None else (0.8 * len(gene_comparisons), 3)
             gene_comparisons.plot.bar(
                 y="f1",
-                figsize=(10, 2),  # TODO auto-determine figsize
+                figsize=figsize,
                 title=f"Gene overlap F1 scores across groups - mean_f1 = {mean_f1:.2f}",
                 legend=False,
+                layout="constrained",
             )
         elif plot_kind == "summary":
             lfc_pearson = self.metrics[METRIC_DIFF_EXP][model_name]["lfc_pearson"]
@@ -442,20 +459,6 @@ class PPC:
             summary_df["gene_overlap_f1"] = gene_comparisons
 
             summary_df.boxplot(figsize=(10, 8))
-
-            # color = {
-            #     "lfc_pearson": "red",
-            #     "lfc_spearman": "orange",
-            #     "gene_frac_pearson": "blue",
-            #     "gene_frac_spearman": "magenta",
-            #     "gene_overlap_f1": "green",
-            # }
-            # summary_df.plot.barh(
-            #     figsize=(2, 20),  # TODO auto-determine figsize
-            #     width=0.8,  # TODO auto-determine
-            #     color=color,
-            # ).invert_yaxis()
-            # plt.legend(bbox_to_anchor=(-0.25, 1), fontsize=9)  # TODO auto-determine
         else:
             raise ValueError("Unknown plot_kind: {plot_kind}")
 
