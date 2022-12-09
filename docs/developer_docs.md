@@ -193,7 +193,8 @@ In addition to the packages needed to _use_ this package, you need additional py
 the documentation_. It's easy to install them using `pip`:
 
 ```bash
-pip install "scvi-criticism[dev,test,doc]"
+cd scvi-criticism
+pip install -e ".[dev,test,doc]"
 ```
 
 ### Code-style
