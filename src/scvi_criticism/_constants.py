@@ -1,0 +1,7 @@
+METRIC_CV_CELL = "cv_cell"
+METRIC_CV_GENE = "cv_gene"
+METRIC_MWU = "mannwhitneyu"
+METRIC_DIFF_EXP = "diff_exp"
+
+DEFAULT_DE_N_TOP_GENES = 2
+DEFAULT_DE_N_TOP_GENES_OVERLAP = 100
