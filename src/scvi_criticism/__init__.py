@@ -2,6 +2,7 @@ import logging
 from importlib.metadata import version
 
 from ._ppc import PPC, run_ppc
+from ._ppc_plot import PPCPlot
 from ._settings import settings
 
 settings.verbosity = logging.INFO
@@ -10,4 +11,4 @@ logger = logging.getLogger("scvi_criticism")
 logger.propagate = False
 
 __version__ = version("scvi-criticism")
-__all__ = ["PPC", "run_ppc"]
+__all__ = ["PPC", "run_ppc", "PPCPlot"]
