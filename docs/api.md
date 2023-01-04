@@ -8,9 +8,7 @@ import scvi_criticism
 
 ```{eval-rst}
 .. currentmodule:: scvi_criticism
-```
 
-```{eval-rst}
 .. autosummary::
     :toctree: generated
     :nosignatures:
