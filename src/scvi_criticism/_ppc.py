@@ -60,7 +60,15 @@ class PPC:
     def _metrics_repr(self) -> str:
         def custom_handle_unserializable(o):
             if isinstance(o, AnnData):
-                return f"AnnData with n_obs={o.n_obs}, n_vars={o.n_vars}"
+                return f"AnnData object with n_obs={o.n_obs}, n_vars={o.n_vars}"
+            elif isinstance(o, pd.DataFrame):
+                s = f"Pandas DataFrame with shape={o.shape}, "
+                n_cols = 5
+                if len(o.columns) > n_cols:
+                    return s + f"first {n_cols} columns={o.columns[:n_cols].to_list()}"
+                return s + f"columns={o.columns.to_list()}"
+            elif isinstance(o, pd.Series):
+                return f"Pandas Series with n_rows={len(o)}"
             return f"ERROR unserializable type: {type(o)}"
 
         return json.dumps(self.metrics, indent=4, default=custom_handle_unserializable)
@@ -139,7 +147,7 @@ class PPC:
         dp_kind = "color" if kind == "lfc" else "fraction"
         df_raw = _get_dp_as_df(rgg_dp_raw, dp_kind)
         df_approx = _get_dp_as_df(rgg_dp_approx, dp_kind)
-        self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_raw"] = df_raw
+        self.metrics[METRIC_DIFF_EXP][f"{kind}_df_raw"] = df_raw
         self.metrics[METRIC_DIFF_EXP][m][f"{kind}_df_approx"] = df_approx
 
         # mtr stands for metric
