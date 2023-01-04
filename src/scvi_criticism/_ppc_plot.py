@@ -110,16 +110,15 @@ class PPCPlot:
     ):
         """Placeholder docstring. TBD complete."""
         assert plot_kind in ["dotplots", "lfc_comparisons", "fraction_comparisons", "gene_overlaps", "summary"]
-
-        adata_raw = self._ppc.metrics[METRIC_DIFF_EXP]["adata_raw"]
-        var_names = self._ppc.metrics[METRIC_DIFF_EXP]["var_names"]
-        model_de_metrics = self._ppc.metrics[METRIC_DIFF_EXP][model_name]
-        adata_approx = model_de_metrics["adata_approx"]
-        if var_names_subset is not None:
-            var_names = {k: v for k, v in var_names.items() if k in var_names_subset}
+        de_metrics = self._ppc.metrics[METRIC_DIFF_EXP]
+        model_de_metrics = de_metrics[model_name]
 
         if plot_kind == "dotplots":
             # plot dotplots for raw and approx
+            adata_raw = de_metrics["adata_raw"]
+            var_names = de_metrics["var_names"]
+            if var_names_subset is not None:
+                var_names = {k: v for k, v in var_names.items() if k in var_names_subset}
             sc.pl.rank_genes_groups_dotplot(
                 adata_raw,
                 values_to_plot="logfoldchanges",
@@ -134,6 +133,7 @@ class PPCPlot:
             # plot, using var_names, i.e., the N highly scored genes from the DE result on adata_raw
             # we do this because the N highly scored genes (per group) in the adata_approx are not necessarily
             # the same as adata_raw. this discrepancy is evaluated elsewhere (when looking at gene overlaps)
+            adata_approx = model_de_metrics["adata_approx"]
             sc.pl.rank_genes_groups_dotplot(
                 adata_approx,
                 values_to_plot="logfoldchanges",
@@ -146,7 +146,7 @@ class PPCPlot:
             )
         elif plot_kind == "lfc_comparisons" or plot_kind == "fraction_comparisons":
             kind = "lfc" if plot_kind == "lfc_comparisons" else "fraction"
-            df_raw = model_de_metrics[f"{kind}_df_raw"]
+            df_raw = de_metrics[f"{kind}_df_raw"]
             df_approx = model_de_metrics[f"{kind}_df_approx"]
             mae_mtr = model_de_metrics[f"{kind}_mae"]
             pearson_mtr = model_de_metrics[f"{kind}_pearson"]

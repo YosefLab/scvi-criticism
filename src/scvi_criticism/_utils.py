@@ -5,7 +5,7 @@ from scipy.stats import pearsonr, spearmanr
 
 # from https://stackoverflow.com/a/28216751
 def _add_identity(axes, *line_args, **line_kwargs):
-    (identity,) = axes.plot([], [], *line_args, **line_kwargs)
+    (identity,) = axes.plot([], [], *line_args, **line_kwargs, label="identity")
 
     def callback(axes):
         low_x, high_x = axes.get_xlim()
@@ -17,6 +17,7 @@ def _add_identity(axes, *line_args, **line_kwargs):
     callback(axes)
     axes.callbacks.connect("xlim_changed", callback)
     axes.callbacks.connect("ylim_changed", callback)
+    axes.legend()
     return axes
 
 
@@ -37,7 +38,7 @@ def _get_df_mae(df_1, df_2):
     # returns a tuple with:
     # 1. the row-wise mean absolute error between the two df's
     # 2. the mean of the mean absolute errors across all rows
-    df_diff = df_1 - df_2
+    df_diff = pd.DataFrame(df_1 - df_2, dtype="float64")
     mae = np.abs(df_diff).mean(axis=1)
     return mae, np.mean(mae)
 
