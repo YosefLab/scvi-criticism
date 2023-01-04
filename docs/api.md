@@ -1,38 +1,21 @@
 # API
 
-## Preprocessing
+Import scvi-criticism as:
 
-```{eval-rst}
-.. module:: scvi_criticism.pp
-.. currentmodule:: scvi_criticism
-
-.. autosummary::
-    :toctree: generated
-
-    pp.basic_preproc
+```
+import scvi_criticism
 ```
 
-## Tools
-
 ```{eval-rst}
-.. module:: scvi_criticism.tl
 .. currentmodule:: scvi_criticism
-
-.. autosummary::
-    :toctree: generated
-
-    tl.basic_tool
 ```
 
-## Plotting
-
 ```{eval-rst}
-.. module:: scvi_criticism.pl
-.. currentmodule:: scvi_criticism
-
 .. autosummary::
     :toctree: generated
+    :nosignatures:
 
-    pl.basic_plot
-    pl.BasicClass
+    scvi_criticism.PPC
+    scvi_criticism.PPC.run_ppc
+    scvi_criticism.PPCPlot
 ```
