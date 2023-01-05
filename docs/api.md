@@ -6,12 +6,13 @@ Import scvi-criticism as:
 import scvi_criticism
 ```
 
+## PPC
+
 ```{eval-rst}
-.. module:: scvi_criticism
 .. currentmodule:: scvi_criticism
 
 .. autosummary::
     :toctree: generated
 
-    scvi_criticism.PPC
+    PPC
 ```
