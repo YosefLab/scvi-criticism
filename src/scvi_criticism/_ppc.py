@@ -28,7 +28,16 @@ from ._utils import (
 
 
 class PPC:
-    """Posterior predictive checks for comparing single-cell generative models"""
+    """
+    Posterior predictive checks for comparing single-cell generative models
+
+    Parameters
+    ----------
+    n_samples
+        Number of posterior predictive samples to generate
+    raw_counts
+        Raw counts matrix (cells x genes) as a numpy array, scipy coo_matrix, or scipy csr_matrix
+    """
 
     def __init__(
         self,
@@ -79,7 +88,18 @@ class PPC:
         batch_size=32,
         indices=None,
     ):
-        """Gathers posterior predictive samples."""
+        """
+        Store posterior predictive samples for each model.
+
+        Parameters
+        ----------
+        models_dict
+            Dictionary of models to store posterior predictive samples for.
+        batch_size
+            Batch size for generating posterior predictive samples.
+        indices
+            Indices to generate posterior predictive samples for.
+        """
         self.models = models_dict
         self.batch_size = batch_size
 
@@ -94,10 +114,12 @@ class PPC:
 
     def coefficient_of_variation(self, cell_wise: bool = True):
         """
-        Calculate the coefficient of variation.
+        Calculate the coefficient of variation (CV) for each model and the raw counts.
 
-        Parameters:
-            cell_wise: Calculate for each cell across genes if True, else do the reverse.
+        Parameters
+        ----------
+        cell_wise
+            Whether to calculate the CV cell-wise or gene-wise.
         """
         axis = 1 if cell_wise is True else 0
         identifier = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
@@ -121,7 +143,7 @@ class PPC:
         self.metrics[identifier] = df
 
     def mann_whitney_u(self):
-        """Calculate the Mann–Whitney U statistic."""
+        """Calculate the Mann-Whitney U test between each model and the raw counts."""
         feat_df = pd.DataFrame()
         pp_samples = self.posterior_predictive_samples.items()
         raw = self.raw_counts.todense()
@@ -215,7 +237,29 @@ class PPC:
         n_top_genes: Optional[int] = None,
         n_top_genes_overlap: Optional[int] = None,
     ):
-        """Placeholder docstring. TBD complete."""
+        """
+        Compute differential expression (DE) metrics.
+
+        Parameters
+        ----------
+        adata_obs_raw
+            The `obs` dataframe from the raw AnnData object.
+        adata_var_raw
+            The `var` dataframe from the raw AnnData object.
+        de_groupby
+            The column name in `adata_obs_raw` that contains the groupby information.
+        de_method
+            The DE method to use. See :meth:`~scanpy.tl.rank_genes_groups` for more details.
+        var_gene_names_col
+            The column name in `adata_var_raw` that contains the gene names. If `None`, then
+            `adata_var_raw.index` is used.
+        n_top_genes
+            The number of top genes to use for the DE analysis. If `None`, then the default value
+            `DEFAULT_DE_N_TOP_GENES` is used.
+        n_top_genes_overlap
+            The number of top genes to use for the DE analysis when computing the gene overlap
+            metrics. If `None`, then the default value `DEFAULT_DE_N_TOP_GENES_OVERLAP` is used.
+        """
         # run DE with the raw counts
         adata_raw = AnnData(X=self.raw_counts.tocsr(), obs=adata_obs_raw, var=adata_var_raw)
         norm_sum = 1e4
@@ -289,7 +333,32 @@ def run_ppc(
     custom_indices: Optional[Union[int, Sequence[int]]] = None,
     **metric_specific_kwargs,
 ):
-    """Compute the given PPC metric for the given model, data and indices."""
+    """
+    Compute the given PPC metric for the given model.
+
+    Parameters
+    ----------
+    adata
+        The raw AnnData object.
+    model
+        The model to compute the PPC metric for.
+    metric
+        The PPC metric to compute.
+    n_samples
+        The number of posterior predictive samples to draw.
+    layer
+        The layer in `adata` where the raw counts reside, if different from `adata.X`.
+    custom_indices
+        The indices to use for the PPC metric computation. If it is a list, we will use these indices. Else if it is
+        an integer, we will randomly draw those many indices from 0..adata.n_obs. Else if it is None, all indices are
+        used.
+    metric_specific_kwargs
+        Keyword arguments for the metric-specific calls.
+
+    Returns
+    -------
+    An instance of the :class:`~scvi_criticism.PPC` class that contains the computed metric results as an attribute.
+    """
     # determine indices to use
     if isinstance(custom_indices, list):
         indices = custom_indices

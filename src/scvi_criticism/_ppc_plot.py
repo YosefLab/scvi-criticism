@@ -20,7 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class PPCPlot:
-    """Plotting utilities for posterior predictive checks"""
+    """
+    Plotting utilities for posterior predictive checks
+
+    Parameters
+    ----------
+    ppc
+        An instance of the :class:`~scvi_criticism.PPC` class containing the computed metrics
+    """
 
     def __init__(
         self,
@@ -29,7 +36,18 @@ class PPCPlot:
         self._ppc = ppc
 
     def plot_cv(self, model_name: str, cell_wise: bool = True):
-        """Placeholder docstring. TBD complete."""
+        """
+        Plot the coefficient of variation metrics results.
+
+        See our tutorials for a demonstration of the generated plot along with detailed explanations.
+
+        Parameters
+        ----------
+        model_name
+            Name of the model
+        cell_wise
+            Whether to plot the cell-wise or gene-wise metric
+        """
         metric = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
         model_metric = self._ppc.metrics[metric][model_name].values
         raw_metric = self._ppc.metrics[metric]["Raw"].values
@@ -54,7 +72,18 @@ class PPCPlot:
         plt.show()
 
     def plot_mwu(self, model_name: str, figure_size=None):
-        """Placeholder docstring. TBD complete."""
+        """
+        Plot the Mann-Whitney U test results.
+
+        See our tutorials for a demonstration of the generated plot along with detailed explanations.
+
+        Parameters
+        ----------
+        model_name
+            Name of the model
+        figure_size
+            Size of the figure to plot
+        """
         model_metric = self._ppc.metrics[METRIC_MWU][model_name].values
         title = f"model={model_name} | metric={METRIC_MWU} | n_cells={self._ppc.raw_counts.shape[0]}"
         figsize = figure_size if figure_size is not None else (10, 12.5)
@@ -108,7 +137,25 @@ class PPCPlot:
         plot_kind: str = "dotplots",
         figure_size=None,
     ):
-        """Placeholder docstring. TBD complete."""
+        """
+        Plot the differential expression results.
+
+        See our tutorials for a demonstration of the generated plot along with detailed explanations.
+
+        Parameters
+        ----------
+        model_name
+            Name of the model
+        var_gene_names_col
+            Column name in the `adata.var` attribute containing the gene names, if different from `adata.var_names`
+        var_names_subset
+            Subset of the variable names to plot
+        plot_kind
+            Kind of plot to plot (e.g., dotplots, gene_overlaps, summary, etc.). See the tutorial for a detailed
+            explanation of the different kinds of plots.
+        figure_size
+            Size of the figure to plot. If None, we will use a heuristic to determine the figure size.
+        """
         assert plot_kind in ["dotplots", "lfc_comparisons", "fraction_comparisons", "gene_overlaps", "summary"]
         de_metrics = self._ppc.metrics[METRIC_DIFF_EXP]
         model_de_metrics = de_metrics[model_name]
