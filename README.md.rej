@@ -7,4 +7,3 @@ diff a/README.md b/README.md	(rejected hunks)
 +[badge-tests]: https://img.shields.io/github/actions/workflow/status/YosefLab/scvi-criticism/test.yaml?branch=main
  [link-tests]: https://github.com/YosefLab/scvi-criticism/actions/workflows/test.yml
  [badge-docs]: https://img.shields.io/readthedocs/scvi-criticism
-
