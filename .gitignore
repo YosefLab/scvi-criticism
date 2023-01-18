@@ -23,7 +23,7 @@ __pycache__/
 /.idea/
 /.vscode/
 
-# Merge conflicts
+# Merge conflict files
 *.rej
 
 # local debugging

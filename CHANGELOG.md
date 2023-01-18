@@ -12,4 +12,4 @@ and this project adheres to [Semantic Versioning][].
 
 TBD
 
-See the [GitHub releases](https://github.com/yoseflab/scib-metrics/releases) for details.
+See the [GitHub releases](https://github.com/yoseflab/scvi-criticism/releases) for details.
