@@ -5,7 +5,7 @@ requires = ["hatchling"]
 
 [project]
 name = "scvi-criticism"
-version = "0.0.1"
+version = "0.1.0"
 description = "Evaluation metrics for scvi-tools models"
 readme = "README.md"
 requires-python = ">=3.8"
