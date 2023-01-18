@@ -21,6 +21,14 @@ urls.Source = "https://github.com/YosefLab/scvi-criticism"
 urls.Home-page = "https://github.com/YosefLab/scvi-criticism"
 dependencies = [
     "anndata",
+    "scanpy",
+    "numpy",
+    "pandas",
+    "scipy",
+    "rich",
+    "matplotlib",
+    "seaborn",
+    "sklearn",
     # for debug logging (referenced from the issue template)
     "session-info"
 ]
@@ -46,6 +54,7 @@ doc = [
 test = [
     "pytest",
     "pytest-cov",
+    "scvi-tools",
 ]
 
 [tool.coverage.run]

@@ -294,6 +294,11 @@ class PPC:
         # get posterior predictive samples from the model (aka approx counts)
         pp_samples = self.posterior_predictive_samples.items()
         for m, samples in pp_samples:
+            if samples.ndim == 3:
+                raise NotImplementedError(
+                    f"Currently only n_samples=1 is supported for DE.\
+                    Got n_samples={samples.ndim}"
+                )
             adata_approx = AnnData(X=csr_matrix(samples), obs=adata_obs_raw, var=adata_var_raw)
             sc.pp.normalize_total(adata_approx, target_sum=norm_sum)
             sc.pp.log1p(adata_approx)
