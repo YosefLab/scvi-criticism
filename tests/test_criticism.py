@@ -88,7 +88,6 @@ def test_ppc_de():
     adata.var["my_gene_names"] = [f"gene_{i}" for i in range(adata.shape[1])]
     ppc, _ = get_ppc_with_samples(adata, two_models=False, n_samples=1)
 
-    # TODO var_gene_names_col
     ppc.diff_exp(
         adata.obs,
         adata.var,
