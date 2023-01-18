@@ -16,7 +16,7 @@ Initial release!
     differential expression -- and plotting.
 -   Add a tutorial showcasing how to use PPC for model evaluation.
 
-**Full Changelog**: https://github.com/YosefLab/scib-metrics/commits/0.1.0
+**Full Changelog**: https://github.com/YosefLab/scvi-criticism/commits/0.1.0
 
 ## Contributors
 
