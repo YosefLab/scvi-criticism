@@ -6,7 +6,7 @@ Import scvi-criticism as:
 import scvi_criticism
 ```
 
-## PPC
+## Metrics
 
 ```{eval-rst}
 .. currentmodule:: scvi_criticism
@@ -15,4 +15,15 @@ import scvi_criticism
     :toctree: generated
 
     PPC
+```
+
+## Plotting
+
+```{eval-rst}
+.. currentmodule:: scvi_criticism
+
+.. autosummary::
+    :toctree: generated
+
+    PPCPlot
 ```
