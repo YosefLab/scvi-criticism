@@ -57,6 +57,9 @@ test = [
     "scvi-tools",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ['src/scvi_criticism']
+
 [tool.coverage.run]
 source = ["scvi_criticism"]
 omit = [
