@@ -4,8 +4,6 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-See the [GitHub releases](https://github.com/yoseflab/scvi-criticism/releases) for details.
-
 ## 0.1.0
 
 Initial release!
@@ -16,7 +14,7 @@ Initial release!
     differential expression -- and plotting.
 -   Add a tutorial showcasing how to use PPC for model evaluation.
 
-**Full Changelog**: https://github.com/YosefLab/scvi-criticism/commits/0.1.0
+**Full Changelog**: [https://github.com/YosefLab/scvi-criticism/commits/0.1.0](https://github.com/YosefLab/scvi-criticism/commits/0.1.0)
 
 ## Contributors
 
