@@ -1,7 +1,8 @@
 import logging
 from itertools import combinations
 from math import ceil
-from typing import Optional, Sequence
+from pathlib import Path
+from typing import Literal, Optional, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,7 +36,7 @@ class PPCPlot:
     ):
         self._ppc = ppc
 
-    def plot_cv(self, model_name: str, cell_wise: bool = True):
+    def plot_cv(self, model_name: str, cell_wise: bool = True, plt_type: Literal["scatter", "hist2d"] = "hist2d"):
         """
         Plot the coefficient of variation metrics results.
 
@@ -47,6 +48,8 @@ class PPCPlot:
             Name of the model
         cell_wise
             Whether to plot the cell-wise or gene-wise metric
+        plt_type
+            The type of plot to generate.
         """
         metric = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
         model_metric = self._ppc.metrics[metric][model_name].values
@@ -62,14 +65,22 @@ class PPCPlot:
             f"Spearman correlation={spearmanr(model_metric, raw_metric)[0]:.2f}\n"
         )
 
-        # plot visual correlation (scatter plot)
-        plt.scatter(model_metric, raw_metric)
+        # plot visual correlation (scatter plot or 2D histogram)
+        if plt_type == "scatter":
+            plt.scatter(model_metric, raw_metric)
+        elif plt_type == "hist2d":
+            h, _, _, _ = plt.hist2d(model_metric, raw_metric, bins=300)
+            plt.close()  # don't show it yet
+            a = h.flatten()
+            cmin = np.min(a[a > 0])  # the smallest value > 0
+            h = plt.hist2d(model_metric, raw_metric, bins=300, cmin=cmin, rasterized=True)
+        else:
+            raise ValueError(f"Invalid plt_type={plt_type}")
         ax = plt.gca()
         _add_identity(ax, color="r", ls="--", alpha=0.5)
         plt.xlabel("model")
         plt.ylabel("raw")
         plt.title(title)
-        plt.show()
 
     def plot_mwu(self, model_name: str, figure_size=None):
         """
@@ -136,6 +147,7 @@ class PPCPlot:
         var_names_subset: Optional[Sequence[str]] = None,
         plot_kind: str = "dotplots",
         figure_size=None,
+        save_fig: bool = False,
     ):
         """
         Plot the differential expression results.
@@ -155,8 +167,18 @@ class PPCPlot:
             explanation of the different kinds of plots.
         figure_size
             Size of the figure to plot. If None, we will use a heuristic to determine the figure size.
+        save_fig
+            Whether to save the figure to a file. The path(s) to the saved figures will be returned.
         """
-        assert plot_kind in ["dotplots", "lfc_comparisons", "fraction_comparisons", "gene_overlaps", "summary"]
+        assert plot_kind in [
+            "dotplots",
+            "lfc_comparisons",
+            "fraction_comparisons",
+            "gene_overlaps",
+            "summary_box",
+            "summary_barh",
+            "summary_barv",
+        ]
         de_metrics = self._ppc.metrics[METRIC_DIFF_EXP]
         model_de_metrics = de_metrics[model_name]
 
@@ -166,6 +188,7 @@ class PPCPlot:
             var_names = de_metrics["var_names"]
             if var_names_subset is not None:
                 var_names = {k: v for k, v in var_names.items() if k in var_names_subset}
+
             sc.pl.rank_genes_groups_dotplot(
                 adata_raw,
                 values_to_plot="logfoldchanges",
@@ -175,6 +198,7 @@ class PPCPlot:
                 dendrogram=False,
                 gene_symbols=var_gene_names_col,
                 var_names=var_names,
+                save="raw.svg" if save_fig else None,
             )
 
             # plot, using var_names, i.e., the N highly scored genes from the DE result on adata_raw
@@ -190,7 +214,17 @@ class PPCPlot:
                 dendrogram=False,
                 gene_symbols=var_gene_names_col,
                 var_names=var_names,
+                save="approx.svg" if save_fig else None,
             )
+
+            # return absolute fig Paths if applicable
+            if save_fig:
+                # I wish scanpy had a better way than to do this...
+                scanpy_fig_path = "figures/dotplot_{}"
+                return (
+                    Path(scanpy_fig_path.format("raw.svg")).resolve(),
+                    Path(scanpy_fig_path.format("approx.svg")).resolve(),
+                )
         elif plot_kind == "lfc_comparisons" or plot_kind == "fraction_comparisons":
             kind = "lfc" if plot_kind == "lfc_comparisons" else "fraction"
             df_raw = de_metrics[f"{kind}_df_raw"]
@@ -205,7 +239,7 @@ class PPCPlot:
             if plot_kind == "lfc_comparisons":
                 desc = "LFC (1 vs all) gene expressions across groups"
             else:
-                desc = "fractions of genes expressed per group across groups"
+                desc = "fractions of cells expressing each gene in each group"
             logger.info(
                 f"{desc}:\n"
                 f"Mean Absolute Error={mae_mtr_mean:.2f},\n"
@@ -228,7 +262,7 @@ class PPCPlot:
                 legend=False,
                 layout="constrained",
             )
-        elif plot_kind == "summary":
+        elif plot_kind.startswith("summary_"):
             lfc_pearson = model_de_metrics["lfc_pearson"]
             lfc_spearman = model_de_metrics["lfc_spearman"]
             fraction_pearson = model_de_metrics["fraction_pearson"]
@@ -245,15 +279,43 @@ class PPCPlot:
             for couple in combinations(idxs, 2):
                 assert couple[0].equals(couple[1])
 
-            cols = ["lfc_pearson", "lfc_spearman", "gene_frac_pearson", "gene_frac_spearman", "gene_overlap_f1"]
+            cols = ["lfc_pearson", "lfc_spearman", "cell_frac_pearson", "cell_frac_spearman", "gene_overlap_f1"]
             summary_df = pd.DataFrame(index=lfc_pearson.index, columns=cols)
             summary_df["lfc_pearson"] = lfc_pearson
             summary_df["lfc_spearman"] = lfc_spearman
-            summary_df["gene_frac_pearson"] = fraction_pearson
-            summary_df["gene_frac_spearman"] = fraction_spearman
+            summary_df["cell_frac_pearson"] = fraction_pearson
+            summary_df["cell_frac_spearman"] = fraction_spearman
             summary_df["gene_overlap_f1"] = gene_comparisons
 
-            summary_df.boxplot(figsize=(10, 8))
-            plt.show()
+            # from https://www.schemecolor.com/sound-of-my-soul.php
+            bar_colors = {
+                "lfc_pearson": "#AA8FC4",
+                "lfc_spearman": "#A4DE87",
+                "cell_frac_pearson": "#F7E6AD",
+                "cell_frac_spearman": "#D9A5CC",
+                "gene_overlap_f1": "#769FCC",
+            }
+            if plot_kind == "summary_box":
+                summary_df.boxplot(figsize=(10, 8))
+            elif plot_kind == "summary_barv":
+                figsize = figure_size if figure_size is not None else (0.8 * len(summary_df), 3)
+                summary_df.index.name = None
+                summary_df.plot.bar(figsize=figsize, color=bar_colors, edgecolor="black")
+                plt.legend(loc="lower right")
+                # add a grid and hide it behind plot objects.
+                # from https://matplotlib.org/stable/gallery/statistics/boxplot_demo.html
+                ax = plt.gca()
+                ax.yaxis.grid(True, linestyle="-", which="major", color="lightgrey", alpha=0.5)
+                ax.set(axisbelow=True)
+            else:
+                figsize = figure_size if figure_size is not None else (3, 0.8 * len(summary_df))
+                summary_df.index.name = None
+                summary_df.plot.barh(figsize=figsize, color=bar_colors, edgecolor="black")
+                plt.legend(loc="upper right")
+                # add a grid and hide it behind plot objects.
+                # from https://matplotlib.org/stable/gallery/statistics/boxplot_demo.html
+                ax = plt.gca()
+                ax.xaxis.grid(True, linestyle="-", which="major", color="lightgrey", alpha=0.5)
+                ax.set(axisbelow=True)
         else:
             raise ValueError("Unknown plot_kind: {plot_kind}")
