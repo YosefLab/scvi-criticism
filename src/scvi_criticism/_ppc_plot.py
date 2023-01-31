@@ -178,6 +178,7 @@ class PPCPlot:
             "summary_box",
             "summary_barh",
             "summary_barv",
+            "summary_return_df",
         ]
         de_metrics = self._ppc.metrics[METRIC_DIFF_EXP]
         model_de_metrics = de_metrics[model_name]
@@ -295,7 +296,9 @@ class PPCPlot:
                 "cell_frac_spearman": "#D9A5CC",
                 "gene_overlap_f1": "#769FCC",
             }
-            if plot_kind == "summary_box":
+            if plot_kind == "summary_return_df":
+                return summary_df
+            elif plot_kind == "summary_box":
                 summary_df.boxplot(figsize=(10, 8))
             elif plot_kind == "summary_barv":
                 figsize = figure_size if figure_size is not None else (0.8 * len(summary_df), 3)
