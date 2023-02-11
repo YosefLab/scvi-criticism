@@ -1,13 +1,17 @@
 import json
 import warnings
-from typing import Optional, Sequence, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse import issparse
 from scipy.stats import mannwhitneyu
+from scvi.model.base import BaseModelClass
+from sparse import GCXS, SparseArray
+from xarray import DataArray, Dataset
 
 from ._constants import (
     DEFAULT_DE_N_TOP_GENES,
@@ -26,36 +30,64 @@ from ._utils import (
     _get_precision_recall_f1,
 )
 
+Dims = Literal["cells", "features"]
 
-class PPC:
+
+@dataclass
+class MetricConfig:
+    """
+    Metric config for running posterior predictive checks.
+
+    Attributes
+    ----------
+    method_name
+        Name of the method to run. Must be a method of :class:`~scvi_criticism.PosteriorPredictiveCheck`.
+    method_kwargs
+        Keyword arguments to pass to the method
+    """
+
+    method_name: str
+    method_kwargs: Dict[str, Any]
+
+
+class PosteriorPredictiveCheck:
     """
     Posterior predictive checks for comparing single-cell generative models
 
     Parameters
     ----------
+    adata
+        AnnData object with raw counts.
+    models_dict
+        Dictionary of models to compare.
+    count_layer_key
+        Key in adata.layers to use as raw counts, if None, use adata.X.
     n_samples
         Number of posterior predictive samples to generate
-    raw_counts
-        Raw counts matrix (cells x genes) as a numpy array, scipy coo_matrix, or scipy csr_matrix
     """
 
     def __init__(
         self,
-        n_samples: int = 1,
-        raw_counts: Optional[Union[np.ndarray, csr_matrix, coo_matrix]] = None,
+        adata: AnnData,
+        models_dict: Dict[str, BaseModelClass],
+        count_layer_key: Optional[str] = None,
+        n_samples: int = 10,
     ):
+        self.adata = adata
+        self.count_layer_key = count_layer_key
+        raw_counts = adata.layers[count_layer_key] if count_layer_key is not None else adata.X
         if isinstance(raw_counts, np.ndarray):
-            self.raw_counts = coo_matrix(raw_counts)
-        elif isinstance(raw_counts, csr_matrix):
-            self.raw_counts = raw_counts.tocoo()
-        elif isinstance(raw_counts, coo_matrix):
-            self.raw_counts = raw_counts
+            self.raw_counts = GCXS.from_numpy(raw_counts)
+        elif issparse(raw_counts):
+            self.raw_counts = GCXS.from_scipy_sparse(raw_counts)
         else:
-            self.raw_counts = None
-        self.posterior_predictive_samples = {}
+            raise ValueError("raw_counts must be a numpy array or scipy sparse matrix")
+        self.samples_dataset = None
         self.n_samples = n_samples
-        self.models = {}
+        self.models = models_dict
         self.metrics = {}
+
+        self._store_posterior_predictive_samples()
 
     def __repr__(self) -> str:
         return (
@@ -82,9 +114,8 @@ class PPC:
 
         return json.dumps(self.metrics, indent=4, default=custom_handle_unserializable)
 
-    def store_posterior_predictive_samples(
+    def _store_posterior_predictive_samples(
         self,
-        models_dict,
         batch_size=32,
         indices=None,
     ):
@@ -100,47 +131,51 @@ class PPC:
         indices
             Indices to generate posterior predictive samples for.
         """
-        self.models = models_dict
         self.batch_size = batch_size
 
+        samples_dict = {}
         for m, model in self.models.items():
             pp_counts = model.posterior_predictive_sample(
-                model.adata,
+                self.adata,
                 n_samples=self.n_samples,
                 batch_size=self.batch_size,
                 indices=indices,
             )
-            self.posterior_predictive_samples[m] = pp_counts
+            samples_dict[m] = DataArray(
+                data=pp_counts,
+                coords={
+                    "cells": self.adata.obs_names,
+                    "features": model.adata.var_names,
+                    "samples": np.arange(self.n_samples),
+                },
+            )
+        samples_dict["Raw"] = DataArray(
+            data=self.raw_counts, coords={"cells": self.adata.obs_names, "features": self.adata.var_names}
+        )
+        self.samples_dataset = Dataset(samples_dict)
 
-    def coefficient_of_variation(self, cell_wise: bool = True):
+    def coefficient_of_variation(self, dim: Dims = "cells"):
         """
         Calculate the coefficient of variation (CV) for each model and the raw counts.
 
+        The CV is computed over the cells or features dimension per sample. The mean CV is then
+        computed over all samples.
+
         Parameters
         ----------
-        cell_wise
-            Whether to calculate the CV cell-wise or gene-wise.
+        dim
+            Dimension to compute CV over.
         """
-        axis = 1 if cell_wise is True else 0
-        identifier = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
-        df = pd.DataFrame()
-        pp_samples = self.posterior_predictive_samples.items()
-        for m, samples in pp_samples:
-            cv = np.nanmean(
-                np.std(samples, axis=axis) / np.mean(samples, axis=axis),
-                axis=-1,
-            )
-
-            df[m] = cv.ravel()
-            df[m] = np.nan_to_num(df[m])
-
-        raw = self.raw_counts.todense()
-        df["Raw"] = pd.DataFrame(
-            np.asarray(np.std(raw, axis=axis)).squeeze() / np.asarray(np.mean(raw, axis=axis)).squeeze()
-        )
-        df["Raw"] = np.nan_to_num(df["Raw"])
-
-        self.metrics[identifier] = df
+        identifier = METRIC_CV_CELL if dim == "features" else METRIC_CV_GENE
+        pp_samples = self.samples_dataset
+        std = pp_samples.std(dim=dim, skipna=False)
+        mean = pp_samples.mean(dim=dim, skipna=False)
+        cv = std / mean
+        # It's ok to make things dense here
+        cv = cv.map(lambda x: x.data.todense() if isinstance(x.data, SparseArray) else x)
+        cv_mean = cv.mean(dim="samples", skipna=True)
+        cv_mean.Raw.data = np.nan_to_num(cv_mean.Raw.data)
+        self.metrics[identifier] = cv_mean.to_dataframe()
 
     def mann_whitney_u(self):
         """Calculate the Mann-Whitney U test between each model and the raw counts."""
@@ -227,10 +262,8 @@ class PPC:
             df.loc[g] = prf[0], prf[1], prf[2]
         self.metrics[METRIC_DIFF_EXP][m]["gene_comparisons"] = df
 
-    def diff_exp(
+    def differential_expression(
         self,
-        adata_obs_raw: pd.DataFrame,
-        adata_var_raw: pd.DataFrame,
         de_groupby: str,
         de_method: str = "t-test",
         var_gene_names_col: Optional[str] = None,
@@ -242,10 +275,6 @@ class PPC:
 
         Parameters
         ----------
-        adata_obs_raw
-            The `obs` dataframe from the raw AnnData object.
-        adata_var_raw
-            The `var` dataframe from the raw AnnData object.
         de_groupby
             The column name in `adata_obs_raw` that contains the groupby information.
         de_method
@@ -261,7 +290,7 @@ class PPC:
             metrics. If `None`, then the default value `DEFAULT_DE_N_TOP_GENES_OVERLAP` is used.
         """
         # run DE with the raw counts
-        adata_raw = AnnData(X=self.raw_counts.tocsr(), obs=adata_obs_raw, var=adata_var_raw)
+        adata_raw = AnnData(X=self.raw_counts.to_scipy_sparse().tocsr(), obs=self.adata.obs, var=self.adata.var)
         norm_sum = 1e4
         sc.pp.normalize_total(adata_raw, target_sum=norm_sum)
         sc.pp.log1p(adata_raw)
@@ -275,7 +304,7 @@ class PPC:
         var_names = _get_top_n_genes_per_group(adata_raw, n_genes, var_gene_names_col)
 
         self.metrics[METRIC_DIFF_EXP] = {}
-        self.metrics[METRIC_DIFF_EXP]["adata_raw"] = adata_raw.copy()
+        self.metrics[METRIC_DIFF_EXP]["adata_raw"] = adata_raw
         self.metrics[METRIC_DIFF_EXP]["var_names"] = var_names
 
         # get the dotplot values for adata_raw
@@ -295,11 +324,10 @@ class PPC:
         pp_samples = self.posterior_predictive_samples.items()
         for m, samples in pp_samples:
             if samples.ndim == 3:
-                raise NotImplementedError(
-                    f"Currently only n_samples=1 is supported for DE.\
-                    Got n_samples={samples.ndim}"
-                )
-            adata_approx = AnnData(X=csr_matrix(samples), obs=adata_obs_raw, var=adata_var_raw)
+                one_sample = samples[..., 0]
+            else:
+                one_sample = samples
+            adata_approx = AnnData(X=one_sample.to_scipy_sparse().tocsr(), obs=adata_raw.obs, var=adata_raw.var)
             sc.pp.normalize_total(adata_approx, target_sum=norm_sum)
             sc.pp.log1p(adata_approx)
 
@@ -309,7 +337,7 @@ class PPC:
                 sc.tl.rank_genes_groups(adata_approx, de_groupby, use_raw=False, method=de_method)
 
             self.metrics[METRIC_DIFF_EXP][m] = {}
-            self.metrics[METRIC_DIFF_EXP][m]["adata_approx"] = adata_approx.copy()
+            self.metrics[METRIC_DIFF_EXP][m]["adata_approx"] = adata_approx
 
             rgg_dp_approx = sc.pl.rank_genes_groups_dotplot(
                 adata_approx,
@@ -328,66 +356,11 @@ class PPC:
 
             self._diff_exp_compute_gene_overlaps(adata_raw, adata_approx, m, var_gene_names_col, n_top_genes_overlap)
 
-
-def run_ppc(
-    adata: AnnData,
-    model,
-    metric: str,
-    n_samples: int,
-    layer: Optional[str] = None,
-    custom_indices: Optional[Union[int, Sequence[int]]] = None,
-    **metric_specific_kwargs,
-):
-    """
-    Compute the given PPC metric for the given model.
-
-    Parameters
-    ----------
-    adata
-        The raw AnnData object.
-    model
-        The model to compute the PPC metric for.
-    metric
-        The PPC metric to compute.
-    n_samples
-        The number of posterior predictive samples to draw.
-    layer
-        The layer in `adata` where the raw counts reside, if different from `adata.X`.
-    custom_indices
-        The indices to use for the PPC metric computation. If it is a list, we will use these indices. Else if it is
-        an integer, we will randomly draw those many indices from 0..adata.n_obs. Else if it is None, all indices are
-        used.
-    metric_specific_kwargs
-        Keyword arguments for the metric-specific calls.
-
-    Returns
-    -------
-    An instance of the :class:`~scvi_criticism.PPC` class that contains the computed metric results as an attribute.
-    """
-    # determine indices to use
-    if isinstance(custom_indices, list):
-        indices = custom_indices
-    elif isinstance(custom_indices, int):
-        indices = np.random.randint(0, adata.n_obs, custom_indices)
-    else:
-        indices = np.arange(adata.n_obs)
-
-    # create PPC instance and compute pp samples
-    raw_data = adata[indices].X if layer is None else adata[indices].layers[layer]
-    ppc = PPC(n_samples=n_samples, raw_counts=raw_data)
-    model_name = f"{model.__class__.__name__}"
-    models_dict = {model_name: model}
-    ppc.store_posterior_predictive_samples(models_dict, indices=indices)
-
-    # calculate metrics
-    if (metric == METRIC_CV_CELL) or (metric == METRIC_CV_GENE):
-        ppc.coefficient_of_variation(cell_wise=(metric == METRIC_CV_CELL))
-    elif metric == METRIC_MWU:
-        ppc.mann_whitney_u()
-    elif metric == METRIC_DIFF_EXP:
-        # adata.obs is needed for de_groupby
-        ppc.diff_exp(adata[indices].obs, adata.var, **metric_specific_kwargs)
-    else:
-        raise NotImplementedError(f"Unknown metric: {metric}")
-
-    return ppc
+    def run(self, metrics_to_run: List[MetricConfig]):
+        """Run the metrics."""
+        # calculate metrics
+        for metric_config in metrics_to_run:
+            metric_specific_kwargs = metric_config.kwargs
+            method_name = metric_config.method_name
+            fn = getattr(self, method_name)
+            fn(**metric_specific_kwargs)

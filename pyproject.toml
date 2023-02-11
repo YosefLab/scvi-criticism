@@ -30,7 +30,10 @@ dependencies = [
     "seaborn",
     "sklearn",
     # for debug logging (referenced from the issue template)
-    "session-info"
+    "session-info",
+    "xarray",
+    "scvi-tools",
+    "sparse",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +41,8 @@ dev = [
     # CLI for bumping the version number
     "bump2version",
     "pre-commit",
-    "twine>=4.0.2"
+    "twine>=4.0.2",
+    "ipython",
 ]
 doc = [
     "sphinx>=4",
@@ -54,7 +58,6 @@ doc = [
 test = [
     "pytest",
     "pytest-cov",
-    "scvi-tools",
 ]
 
 [tool.hatch.build.targets.wheel]

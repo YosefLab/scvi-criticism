@@ -13,7 +13,7 @@ from sklearn.metrics import mean_absolute_error as mae
 from sklearn.metrics import mean_squared_error as mse
 
 from ._constants import METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP, METRIC_MWU
-from ._ppc import PPC
+from ._ppc import PosteriorPredictiveCheck
 from ._utils import _add_identity
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class PPCPlot:
 
     def __init__(
         self,
-        ppc: PPC,
+        ppc: PosteriorPredictiveCheck,
     ):
         self._ppc = ppc
 

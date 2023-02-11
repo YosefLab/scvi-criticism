@@ -1,27 +1,13 @@
 import pandas as pd
-from scipy.sparse import coo_matrix
 from scvi.data import synthetic_iid
 from scvi.model import SCVI
+from sparse import GCXS
+from xarray import Dataset
 
-from scvi_criticism import PPC
-
-
-def test_ppc_init():
-    adata = synthetic_iid()
-    raw_counts = adata.X
-    ppc = PPC(raw_counts=raw_counts, n_samples=42)
-
-    assert isinstance(ppc.raw_counts, coo_matrix)
-    assert ppc.posterior_predictive_samples == {}
-    assert ppc.n_samples == 42
-    assert ppc.models == {}
-    assert ppc.metrics == {}
+from scvi_criticism import PosteriorPredictiveCheck
 
 
 def get_ppc_with_samples(adata, two_models=True, n_samples=2):
-    raw_counts = adata.X
-    ppc = PPC(raw_counts=raw_counts, n_samples=n_samples)
-
     # create and train models
     SCVI.setup_anndata(
         adata,
@@ -44,43 +30,39 @@ def get_ppc_with_samples(adata, two_models=True, n_samples=2):
     if two_models:
         models_dict["model2"] = model2
 
-    ppc.store_posterior_predictive_samples(models_dict)
+    ppc = PosteriorPredictiveCheck(adata, models_dict, n_samples=n_samples)
 
     return ppc, models_dict
 
 
-def test_ppc_get_samples():
+def test_ppc_init():
     adata = synthetic_iid()
-    ppc, models_dict = get_ppc_with_samples(adata)
+    ppc, models_dict = get_ppc_with_samples(adata, n_samples=42)
+    assert isinstance(ppc.raw_counts, GCXS)
+    assert isinstance(ppc.samples_dataset, Dataset)
+    assert ppc.n_samples == 42
+    assert ppc.models is models_dict
+    assert ppc.metrics == {}
+    assert ppc.samples_dataset.model1.shape == (400, 100, 42)
+    assert ppc.samples_dataset.model2.shape == (400, 100, 42)
 
-    assert ppc.models == models_dict
-    assert len(ppc.posterior_predictive_samples.keys()) == 2
-    # n_cells x n_genes x n_samples
-    assert ppc.posterior_predictive_samples["model1"].shape == (400, 100, 2)
-    assert ppc.posterior_predictive_samples["model2"].shape == (400, 100, 2)
 
-
-def test_ppc_cv_mwu():
+def test_ppc_cv():
     adata = synthetic_iid(n_genes=10)
     ppc, _ = get_ppc_with_samples(adata)
 
-    ppc.coefficient_of_variation(cell_wise=True)
-    ppc.coefficient_of_variation(cell_wise=False)
-    ppc.mann_whitney_u()
+    ppc.coefficient_of_variation("cells")
+    ppc.coefficient_of_variation("features")
 
-    assert list(ppc.metrics.keys()) == ["cv_cell", "cv_gene", "mannwhitneyu"]
+    assert list(ppc.metrics.keys()) == ["cv_gene", "cv_cell"]
 
     assert isinstance(ppc.metrics["cv_cell"], pd.DataFrame)
     assert ppc.metrics["cv_cell"].columns.tolist() == ["model1", "model2", "Raw"]
-    assert ppc.metrics["cv_cell"].index.equals(pd.RangeIndex(start=0, stop=400))
+    assert ppc.metrics["cv_cell"].index.equals(adata.obs_names)
 
     assert isinstance(ppc.metrics["cv_gene"], pd.DataFrame)
     assert ppc.metrics["cv_gene"].columns.tolist() == ["model1", "model2", "Raw"]
-    assert ppc.metrics["cv_gene"].index.equals(pd.RangeIndex(start=0, stop=10))
-
-    assert isinstance(ppc.metrics["mannwhitneyu"], pd.DataFrame)
-    assert ppc.metrics["mannwhitneyu"].columns.tolist() == ["model1", "model2"]
-    assert ppc.metrics["mannwhitneyu"].index.equals(pd.RangeIndex(start=0, stop=10))
+    assert ppc.metrics["cv_gene"].index.equals(adata.var_names)
 
 
 def test_ppc_de():
