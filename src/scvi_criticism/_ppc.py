@@ -144,6 +144,8 @@ class PosteriorPredictiveCheck:
                 batch_size=self.batch_size,
                 indices=indices,
             )
+            # TODO: remove once GCXS is in scvi-tools
+            pp_counts = GCXS.from_numpy(pp_counts)
             samples_dict[m] = DataArray(
                 data=pp_counts,
                 coords={
@@ -201,6 +203,10 @@ class PosteriorPredictiveCheck:
         confidence_intervals
             List of confidence intervals to compute calibration error for.
             E.g., [0.01, 0.02, 0.98, 0.99]
+
+        Notes
+        -----
+        This does not work on sparse data and can cause large memory usage.
         """
         if confidence_intervals is None:
             ps = [2.5, 5, 7.5, 10, 12.5, 15, 17.5, 82.5, 85, 87.5, 90, 92.5, 95, 97.5]
@@ -210,6 +216,8 @@ class PosteriorPredictiveCheck:
                 raise ValueError("Confidence intervals must be even")
             ps = confidence_intervals
         pp_samples = self.samples_dataset
+        # TODO: Reimplement to work on sparse data
+        pp_samples = _make_dataset_dense(pp_samples)
         # results in (quantiles, cells, features)
         quants = pp_samples.quantile(q=ps, dim="samples", skipna=False)
         credible_interval_indices = [(i, len(ps) - (i + 1)) for i in range(len(ps) // 2)]
@@ -291,7 +299,9 @@ class PosteriorPredictiveCheck:
                 # overwrite X with the posterior predictive sample
                 # This allows us to save all the DE results in the same adata object
                 one_sample_data = (
-                    one_sample.to_scipy_sparse().tocsr() if isinstance(one_sample, SparseArray) else one_sample
+                    one_sample.data.to_scipy_sparse().tocsr()
+                    if isinstance(one_sample.data, SparseArray)
+                    else one_sample
                 )
                 adata_approx.X = one_sample_data.copy()
                 sc.pp.normalize_total(adata_approx, target_sum=cell_scale_factor)
