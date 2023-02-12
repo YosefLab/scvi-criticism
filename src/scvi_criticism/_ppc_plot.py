@@ -7,12 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import seaborn as sns
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error as mae
 from sklearn.metrics import mean_squared_error as mse
 
-from ._constants import METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP, METRIC_MWU
+from ._constants import METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP
 from ._ppc import PosteriorPredictiveCheck
 from ._utils import _add_identity
 
@@ -70,28 +69,6 @@ class PPCPlot:
         plt.ylabel("raw")
         plt.title(title)
         plt.show()
-
-    def plot_mwu(self, model_name: str, figure_size=None):
-        """
-        Plot the Mann-Whitney U test results.
-
-        See our tutorials for a demonstration of the generated plot along with detailed explanations.
-
-        Parameters
-        ----------
-        model_name
-            Name of the model
-        figure_size
-            Size of the figure to plot
-        """
-        model_metric = self._ppc.metrics[METRIC_MWU][model_name].values
-        title = f"model={model_name} | metric={METRIC_MWU} | n_cells={self._ppc.raw_counts.shape[0]}"
-        figsize = figure_size if figure_size is not None else (10, 12.5)
-        plt.subplots(2, 1, figsize=figsize, sharex=False)
-        sns.boxplot(
-            data=np.log10(model_metric),
-            title=title,
-        )
 
     def _plot_diff_exp_scatter_plots(
         self,
