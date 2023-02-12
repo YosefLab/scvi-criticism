@@ -28,7 +28,7 @@ dependencies = [
     "rich",
     "matplotlib",
     "seaborn",
-    "sklearn",
+    "scikit-learn",
     # for debug logging (referenced from the issue template)
     "session-info",
     "xarray",
