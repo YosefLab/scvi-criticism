@@ -74,7 +74,7 @@ def test_ppc_calibration():
     assert list(ppc.metrics.keys()) == ["calibration"]
 
     assert isinstance(ppc.metrics["calibration"], pd.DataFrame)
-    assert ppc.metrics["cv_cell"].columns.tolist() == ["model1", "model2"]
+    assert ppc.metrics["calibration"].columns.tolist() == ["model1", "model2"]
 
 
 def test_ppc_zero_fraction():
