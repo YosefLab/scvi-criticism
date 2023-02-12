@@ -14,7 +14,7 @@ import scvi_criticism
 .. autosummary::
     :toctree: generated
 
-    PPC
+    PosteriorPredictiveCheck
 ```
 
 ## Plotting
