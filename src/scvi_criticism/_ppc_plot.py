@@ -299,7 +299,19 @@ class PPCPlot:
             if plot_kind == "summary_return_df":
                 return summary_df
             elif plot_kind == "summary_box":
-                summary_df.boxplot(figsize=(10, 8))
+                # summary_df.boxplot(figsize=(10, 8))
+                col_names = {
+                    "lfc_pearson": "LFC\nPearson",
+                    "lfc_spearman": "LFC\nSpearman",
+                    "cell_frac_pearson": "Cell Frac\nPearson",
+                    "cell_frac_spearman": "Cell Frac\nSpearman",
+                    "gene_overlap_f1": "Gene Overlap\nF1",
+                }
+                summary_df.rename(columns=col_names, inplace=True)
+                sns.set(rc={"figure.figsize": (6, 6)})
+                sns.set_theme(style="white")
+                sns.violinplot(summary_df, palette=sns.color_palette("pastel"))
+                plt.grid()
             elif plot_kind == "summary_barv":
                 figsize = figure_size if figure_size is not None else (0.8 * len(summary_df), 3)
                 summary_df.index.name = None
@@ -310,7 +322,7 @@ class PPCPlot:
                 ax = plt.gca()
                 ax.yaxis.grid(True, linestyle="-", which="major", color="lightgrey", alpha=0.5)
                 ax.set(axisbelow=True)
-            else:
+            else:  # summary_barh
                 figsize = figure_size if figure_size is not None else (3, 0.8 * len(summary_df))
                 summary_df.index.name = None
                 summary_df.plot.barh(figsize=figsize, color=bar_colors, edgecolor="black")
