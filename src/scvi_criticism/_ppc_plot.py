@@ -294,7 +294,6 @@ class PPCPlot:
             summary_df["cell_frac_spearman"] = fraction_spearman
             summary_df["gene_overlap_f1"] = gene_comparisons
 
-            # from https://www.schemecolor.com/sound-of-my-soul.php
             bar_colors = {
                 "lfc_pearson": "#AA8FC4",
                 "lfc_spearman": "#A4DE87",
