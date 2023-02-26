@@ -12,6 +12,7 @@ import seaborn as sns
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error as mae
 from sklearn.metrics import mean_squared_error as mse
+from sklearn.metrics import r2_score
 
 from ._constants import METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP, METRIC_MWU
 from ._ppc import PPC
@@ -63,6 +64,7 @@ class PPCPlot:
             f"Mean Squared Error={mse(model_metric, raw_metric):.2f}\n"
             f"Pearson correlation={pearsonr(model_metric, raw_metric)[0]:.2f}\n"
             f"Spearman correlation={spearmanr(model_metric, raw_metric)[0]:.2f}\n"
+            f"r^2={r2_score(raw_metric, model_metric):.2f}\n"
         )
 
         # plot visual correlation (scatter plot or 2D histogram)
@@ -78,6 +80,10 @@ class PPCPlot:
             raise ValueError(f"Invalid plt_type={plt_type}")
         ax = plt.gca()
         _add_identity(ax, color="r", ls="--", alpha=0.5)
+        # add line of best fit
+        # a, b = np.polyfit(model_metric, raw_metric, 1)
+        # plt.plot(model_metric, a*model_metric+b)
+        # add labels and titles
         plt.xlabel("model")
         plt.ylabel("raw")
         plt.title(title)
