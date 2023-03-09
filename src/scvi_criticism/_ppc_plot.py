@@ -14,7 +14,8 @@ from sklearn.metrics import mean_absolute_error as mae
 from sklearn.metrics import mean_squared_error as mse
 from sklearn.metrics import r2_score
 
-from ._constants import METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP, METRIC_MWU
+from ._constants import (METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP,
+                         METRIC_MWU)
 from ._ppc import PPC
 from ._utils import _add_identity
 

@@ -9,22 +9,12 @@ from anndata import AnnData
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.stats import mannwhitneyu
 
-from ._constants import (
-    DEFAULT_DE_N_TOP_GENES,
-    DEFAULT_DE_N_TOP_GENES_OVERLAP,
-    METRIC_CV_CELL,
-    METRIC_CV_GENE,
-    METRIC_DIFF_EXP,
-    METRIC_MWU,
-)
+from ._constants import (DEFAULT_DE_N_TOP_GENES,
+                         DEFAULT_DE_N_TOP_GENES_OVERLAP, METRIC_CV_CELL,
+                         METRIC_CV_GENE, METRIC_DIFF_EXP, METRIC_MWU)
 from ._de_utils import _get_all_de_groups, _get_top_n_genes_per_group
-from ._utils import (
-    _get_binary_array_from_selection,
-    _get_df_corr_coeff,
-    _get_df_mae,
-    _get_dp_as_df,
-    _get_precision_recall_f1,
-)
+from ._utils import (_get_binary_array_from_selection, _get_df_corr_coeff,
+                     _get_df_mae, _get_dp_as_df, _get_precision_recall_f1)
 
 
 class PPC:
