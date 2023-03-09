@@ -14,6 +14,7 @@ __pycache__/
 /.pytest_cache/
 /.cache/
 /data/
+/docs/notebooks/data/
 
 # docs
 /docs/generated/
@@ -28,3 +29,4 @@ __pycache__/
 
 # local debugging
 /local/
+/docs/notebooks/local/
