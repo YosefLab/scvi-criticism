@@ -4,7 +4,7 @@ from scvi.model import SCVI
 from sparse import GCXS
 from xarray import Dataset
 
-from scvi_criticism import PosteriorPredictiveCheck
+from scvi_criticism import PPC
 
 
 def get_ppc_with_samples(adata, two_models=True, n_samples=2):
@@ -30,7 +30,7 @@ def get_ppc_with_samples(adata, two_models=True, n_samples=2):
     if two_models:
         models_dict["model2"] = model2
 
-    ppc = PosteriorPredictiveCheck(adata, models_dict, n_samples=n_samples)
+    ppc = PPC(adata, models_dict, n_samples=n_samples)
 
     return ppc, models_dict
 

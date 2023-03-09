@@ -17,7 +17,7 @@ from xarray import DataArray, Dataset
 from ._constants import (
     DATA_VAR_RAW,
     DEFAULT_DE_N_TOP_GENES_OVERLAP,
-    DEFAULT_P_VAL_THRESHOLD,
+    DEFAULT_DE_P_VAL_THRESHOLD,
     METRIC_CALIBRATION,
     METRIC_CV_CELL,
     METRIC_CV_GENE,
@@ -44,7 +44,7 @@ class MetricConfig:
     Attributes
     ----------
     method_name
-        Name of the method to run. Must be a method of :class:`~scvi_criticism.PosteriorPredictiveCheck`.
+        Name of the method to run. Must be a method of :class:`~scvi_criticism.PPC`.
     method_kwargs
         Keyword arguments to pass to the method
     """
@@ -53,7 +53,7 @@ class MetricConfig:
     method_kwargs: Dict[str, Any]
 
 
-class PosteriorPredictiveCheck:
+class PPC:
     """
     Posterior predictive checks for comparing single-cell generative models
 
@@ -139,7 +139,7 @@ class PosteriorPredictiveCheck:
         samples_dict = {}
         for m, model in self.models.items():
             pp_counts = model.posterior_predictive_sample(
-                self.adata,
+                model.adata,
                 n_samples=self.n_samples,
                 batch_size=self.batch_size,
                 indices=indices,
@@ -185,7 +185,7 @@ class PosteriorPredictiveCheck:
     def zero_fraction(self) -> None:
         """Fraction of zeros in raw counts for a specific gene"""
         pp_samples = self.samples_dataset
-        mean = pp_samples.mean(dim="cells", skipna=False).mean(dim="samples", skipna=False)
+        mean = (pp_samples != 0).mean(dim="cells", skipna=False).mean(dim="samples", skipna=False)
         mean = _make_dataset_dense(mean)
         self.metrics[METRIC_ZERO_FRACTION] = mean.to_dataframe()
 
@@ -248,7 +248,7 @@ class PosteriorPredictiveCheck:
         de_method: str = "t-test",
         n_samples: int = 1,
         cell_scale_factor: float = 1e4,
-        p_val_thresh: float = DEFAULT_P_VAL_THRESHOLD,
+        p_val_thresh: float = DEFAULT_DE_P_VAL_THRESHOLD,
         n_top_genes_fallback: int = DEFAULT_DE_N_TOP_GENES_OVERLAP,
     ):
         """
@@ -310,7 +310,7 @@ class PosteriorPredictiveCheck:
                 # run DE with the imputed normalized data
                 with warnings.catch_warnings():
                     warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
-                    key_added = f"{UNS_NAME_RGG_PPC}_{model}_{k}"
+                    key_added = f"{UNS_NAME_RGG_PPC}_{model}_sample_{k}"
                     de_keys[model].append(key_added)
                     sc.tl.rank_genes_groups(
                         adata_approx, de_groupby, use_raw=False, method=de_method, key_added=key_added
@@ -321,7 +321,6 @@ class PosteriorPredictiveCheck:
             index=np.arange(len(groups) * len(models)),
             columns=["roc_auc", "pr_auc", "lfc_mae", "lfc_pearson", "group", "model"],
         )
-        i = 0
         for g in groups:
             raw_group_data = sc.get.rank_genes_groups_df(adata_de, group=g, key=UNS_NAME_RGG_RAW)
             raw_group_data.set_index("names", inplace=True)
@@ -351,13 +350,13 @@ class PosteriorPredictiveCheck:
                         pearsonr(raw_group_data["logfoldchanges"], sample_group_data["logfoldchanges"])[0]
                     )
                 # Mean here is over sampled datasets
-                df.loc[i, "roc_auc"] = np.mean(roc_aucs)
-                df.loc[i, "pr_auc"] = np.mean(pr_aucs)
-                df.loc[i, "lfc_mae"] = np.mean(lfc_maes)
-                df.loc[i, "lfc_pearson"] = np.mean(lfc_pearsons)
-                df.loc[i, "model"] = model
-                df.loc[i, "group"] = g
-                i += 1
+                idx = len(df) - 1
+                df.loc[idx, "model"] = model
+                df.loc[idx, "group"] = g
+                df.loc[idx, "lfc_mae"] = np.mean(lfc_maes)
+                df.loc[idx, "lfc_pearson"] = np.mean(lfc_pearsons)
+                df.loc[idx, "roc_auc"] = np.mean(roc_aucs)
+                df.loc[idx, "pr_auc"] = np.mean(pr_aucs)
 
         self.metrics[METRIC_DIFF_EXP] = df
 

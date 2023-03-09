@@ -1,7 +1,7 @@
 import logging
 from importlib.metadata import version
 
-from ._ppc import PosteriorPredictiveCheck
+from ._ppc import PPC
 from ._ppc_plot import PPCPlot
 from ._settings import settings
 
@@ -11,4 +11,4 @@ logger = logging.getLogger("scvi_criticism")
 logger.propagate = False
 
 __version__ = version("scvi-criticism")
-__all__ = ["PosteriorPredictiveCheck", "PPCPlot"]
+__all__ = ["PPC", "PPCPlot"]
