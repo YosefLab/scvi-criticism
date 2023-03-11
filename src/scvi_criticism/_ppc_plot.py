@@ -1,7 +1,7 @@
 import logging
 from itertools import combinations
 from math import ceil
-from typing import Optional, Sequence
+from typing import Literal, Optional, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,7 +9,7 @@ import pandas as pd
 import scanpy as sc
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error as mae
-from sklearn.metrics import mean_squared_error as mse
+from sklearn.metrics import r2_score
 
 from ._constants import METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP
 from ._ppc import PPC
@@ -34,7 +34,7 @@ class PPCPlot:
     ):
         self._ppc = ppc
 
-    def plot_cv(self, model_name: str, cell_wise: bool = True):
+    def plot_cv(self, model_name: str, cell_wise: bool = True, plt_type: Literal["scatter", "hist2d"] = "hist2d"):
         """
         Plot the coefficient of variation metrics results.
 
@@ -52,23 +52,35 @@ class PPCPlot:
         raw_metric = self._ppc.metrics[metric]["Raw"].values
         title = f"model={model_name} | metric={metric} | n_cells={self._ppc.raw_counts.shape[0]}"
 
-        # log mae, mse, pearson corr, spearman corr
+        # log mae, pearson corr, spearman corr, R^2
         logger.info(
             f"{title}:\n"
             f"Mean Absolute Error={mae(model_metric, raw_metric):.2f},\n"
-            f"Mean Squared Error={mse(model_metric, raw_metric):.2f}\n"
             f"Pearson correlation={pearsonr(model_metric, raw_metric)[0]:.2f}\n"
             f"Spearman correlation={spearmanr(model_metric, raw_metric)[0]:.2f}\n"
+            f"r^2={r2_score(raw_metric, model_metric):.2f}\n"
         )
 
-        # plot visual correlation (scatter plot)
-        plt.scatter(model_metric, raw_metric)
+        # plot visual correlation (scatter plot or 2D histogram)
+        if plt_type == "scatter":
+            plt.scatter(model_metric, raw_metric)
+        elif plt_type == "hist2d":
+            h, _, _, _ = plt.hist2d(model_metric, raw_metric, bins=300)
+            plt.close()  # don't show it yet
+            a = h.flatten()
+            cmin = np.min(a[a > 0])  # the smallest value > 0
+            h = plt.hist2d(model_metric, raw_metric, bins=300, cmin=cmin, rasterized=True)
+        else:
+            raise ValueError(f"Invalid plt_type={plt_type}")
         ax = plt.gca()
         _add_identity(ax, color="r", ls="--", alpha=0.5)
+        # add line of best fit
+        # a, b = np.polyfit(model_metric, raw_metric, 1)
+        # plt.plot(model_metric, a*model_metric+b)
+        # add labels and titles
         plt.xlabel("model")
         plt.ylabel("raw")
         plt.title(title)
-        plt.show()
 
     def _plot_diff_exp_scatter_plots(
         self,

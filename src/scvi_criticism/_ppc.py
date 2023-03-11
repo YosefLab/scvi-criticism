@@ -321,6 +321,7 @@ class PPC:
             index=np.arange(len(groups) * len(models)),
             columns=["roc_auc", "pr_auc", "lfc_mae", "lfc_pearson", "group", "model"],
         )
+        i = 0
         for g in groups:
             raw_group_data = sc.get.rank_genes_groups_df(adata_de, group=g, key=UNS_NAME_RGG_RAW)
             raw_group_data.set_index("names", inplace=True)
@@ -350,13 +351,13 @@ class PPC:
                         pearsonr(raw_group_data["logfoldchanges"], sample_group_data["logfoldchanges"])[0]
                     )
                 # Mean here is over sampled datasets
-                idx = len(df) - 1
-                df.loc[idx, "model"] = model
-                df.loc[idx, "group"] = g
-                df.loc[idx, "lfc_mae"] = np.mean(lfc_maes)
-                df.loc[idx, "lfc_pearson"] = np.mean(lfc_pearsons)
-                df.loc[idx, "roc_auc"] = np.mean(roc_aucs)
-                df.loc[idx, "pr_auc"] = np.mean(pr_aucs)
+                df.loc[i, "model"] = model
+                df.loc[i, "group"] = g
+                df.loc[i, "lfc_mae"] = np.mean(lfc_maes)
+                df.loc[i, "lfc_pearson"] = np.mean(lfc_pearsons)
+                df.loc[i, "roc_auc"] = np.mean(roc_aucs)
+                df.loc[i, "pr_auc"] = np.mean(pr_aucs)
+                i += 1
 
         self.metrics[METRIC_DIFF_EXP] = df
 
