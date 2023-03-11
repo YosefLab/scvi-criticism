@@ -8,7 +8,7 @@ import pandas as pd
 import scanpy as sc
 from anndata import AnnData
 from scipy.sparse import issparse
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr
 from scvi.model.base import BaseModelClass
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sparse import GCXS, SparseArray
@@ -319,7 +319,7 @@ class PPC:
         groups = self.adata.obs[de_groupby].astype("category").cat.categories
         df = pd.DataFrame(
             index=np.arange(len(groups) * len(models)),
-            columns=["roc_auc", "pr_auc", "lfc_mae", "lfc_pearson", "group", "model"],
+            columns=["roc_auc", "pr_auc", "lfc_mae", "lfc_pearson", "lfc_spearman", "group", "model"],
         )
         i = 0
         for g in groups:
@@ -330,6 +330,7 @@ class PPC:
                 pr_aucs = []
                 lfc_maes = []
                 lfc_pearsons = []
+                lfc_spearmans = []
                 # Now over potential samples
                 for de_key in de_keys[model]:
                     sample_group_data = sc.get.rank_genes_groups_df(adata_approx, group=g, key=de_key)
@@ -344,17 +345,16 @@ class PPC:
                         true[np.argsort(raw_adj_p_vals)[:n_top_genes_fallback]] = 1
                     roc_aucs.append(roc_auc_score(true, pred))
                     pr_aucs.append(average_precision_score(true, pred))
-                    lfc_maes.append(
-                        np.mean(np.abs(raw_group_data["logfoldchanges"] - sample_group_data["logfoldchanges"]))
-                    )
-                    lfc_pearsons.append(
-                        pearsonr(raw_group_data["logfoldchanges"], sample_group_data["logfoldchanges"])[0]
-                    )
+                    rgd, sgd = raw_group_data["logfoldchanges"], sample_group_data["logfoldchanges"]
+                    lfc_maes.append(np.mean(np.abs(rgd - sgd)))
+                    lfc_pearsons.append(pearsonr(rgd, sgd)[0])
+                    lfc_spearmans.append(spearmanr(rgd, sgd)[0])
                 # Mean here is over sampled datasets
                 df.loc[i, "model"] = model
                 df.loc[i, "group"] = g
                 df.loc[i, "lfc_mae"] = np.mean(lfc_maes)
                 df.loc[i, "lfc_pearson"] = np.mean(lfc_pearsons)
+                df.loc[i, "lfc_spearman"] = np.mean(lfc_spearmans)
                 df.loc[i, "roc_auc"] = np.mean(roc_aucs)
                 df.loc[i, "pr_auc"] = np.mean(pr_aucs)
                 i += 1
