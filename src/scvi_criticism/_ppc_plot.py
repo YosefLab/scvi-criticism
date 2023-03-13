@@ -43,6 +43,8 @@ class PPCPlot:
             Name of the model
         cell_wise
             Whether to plot the cell-wise or gene-wise metric
+        plt_type
+            The type of plot to generate.
         """
         metric = METRIC_CV_CELL if cell_wise is True else METRIC_CV_GENE
         model_metric = self._ppc.metrics[metric][model_name].values
@@ -84,6 +86,7 @@ class PPCPlot:
         model_name: str,
         plot_kind: str,
         figure_size=None,
+        save_fig: bool = False,
     ):
         """
         Plot differential expression results.
@@ -96,6 +99,8 @@ class PPCPlot:
             Column name in the `adata.var` attribute containing the gene names, if different from `adata.var_names`
         figure_size
             Size of the figure to plot. If None, we will use a heuristic to determine the figure size.
+        save_fig
+            Whether to save the figure to a file. The path(s) to the saved figures will be returned.
         """
         de_metrics = self._ppc.metrics[METRIC_DIFF_EXP]
         model_de_metrics = de_metrics[de_metrics["model"] == model_name]
