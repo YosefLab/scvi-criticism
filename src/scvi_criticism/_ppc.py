@@ -76,7 +76,7 @@ class PPC:
         if isinstance(raw_counts, np.ndarray):
             self.raw_counts = GCXS.from_numpy(raw_counts, compressed_axes=(0,))
         elif issparse(raw_counts):
-            self.raw_counts = GCXS.from_scipy_sparse(raw_counts, compressed_axes=(0,))
+            self.raw_counts = GCXS.from_scipy_sparse(raw_counts).change_compressed_axes((0,))
         else:
             raise ValueError("raw_counts must be a numpy array or scipy sparse matrix")
         self.samples_dataset = None
