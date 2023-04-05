@@ -72,10 +72,11 @@ class PPC:
         self.adata = adata
         self.count_layer_key = count_layer_key
         raw_counts = adata.layers[count_layer_key] if count_layer_key is not None else adata.X
+        # Compressed axis is rows, like csr
         if isinstance(raw_counts, np.ndarray):
-            self.raw_counts = GCXS.from_numpy(raw_counts)
+            self.raw_counts = GCXS.from_numpy(raw_counts, compressed_axes=(0,))
         elif issparse(raw_counts):
-            self.raw_counts = GCXS.from_scipy_sparse(raw_counts)
+            self.raw_counts = GCXS.from_scipy_sparse(raw_counts, compressed_axes=(0,))
         else:
             raise ValueError("raw_counts must be a numpy array or scipy sparse matrix")
         self.samples_dataset = None
@@ -138,7 +139,7 @@ class PPC:
                 indices=indices,
             )
             # TODO: remove once GCXS is in scvi-tools
-            pp_counts = GCXS.from_numpy(pp_counts)
+            pp_counts = GCXS.from_numpy(pp_counts, compressed_axes=(0,))
             samples_dict[m] = DataArray(
                 data=pp_counts,
                 coords={
@@ -165,9 +166,10 @@ class PPC:
             Dimension to compute CV over.
         """
         identifier = METRIC_CV_CELL if dim == "features" else METRIC_CV_GENE
-        pp_samples = self.samples_dataset
-        std = pp_samples.std(dim=dim, skipna=False)
-        mean = pp_samples.mean(dim=dim, skipna=False)
+        mean = self.samples_dataset.mean(dim=dim, skipna=False)
+        self.samples_dataset = np.square(self.samples_dataset)
+        std = np.sqrt(self.samples_dataset.mean(dim=dim, skipna=False) - np.square(mean))
+        self.samples_dataset = np.sqrt(self.samples_dataset)
         cv = std / mean
         # It's ok to make things dense here
         cv = _make_dataset_dense(cv)
