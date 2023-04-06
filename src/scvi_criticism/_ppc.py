@@ -14,12 +14,18 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from sparse import GCXS, SparseArray
 from xarray import DataArray, Dataset
 
-from ._constants import (DATA_VAR_RAW, DEFAULT_DE_N_TOP_GENES_OVERLAP,
-                         DEFAULT_DE_P_VAL_THRESHOLD)
-from ._constants import (METRIC_CALIBRATION,
-                         METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP,
-                         METRIC_ZERO_FRACTION, UNS_NAME_RGG_PPC,
-                         UNS_NAME_RGG_RAW)
+from ._constants import (
+    DATA_VAR_RAW,
+    DEFAULT_DE_N_TOP_GENES_OVERLAP,
+    DEFAULT_DE_P_VAL_THRESHOLD,
+    METRIC_CALIBRATION,
+    METRIC_CV_CELL,
+    METRIC_CV_GENE,
+    METRIC_DIFF_EXP,
+    METRIC_ZERO_FRACTION,
+    UNS_NAME_RGG_PPC,
+    UNS_NAME_RGG_RAW,
+)
 from ._utils import _get_precision_recall_f1
 
 Dims = Literal["cells", "features"]
