@@ -80,6 +80,7 @@ class PPC:
         self.adata = adata
         self.count_layer_key = count_layer_key
         raw_counts = adata.layers[count_layer_key] if count_layer_key is not None else adata.X
+        # Compressed axis is rows, like csr
         if isinstance(raw_counts, np.ndarray):
             self.raw_counts = GCXS.from_numpy(raw_counts, compressed_axes=(0,))
         elif issparse(raw_counts):
