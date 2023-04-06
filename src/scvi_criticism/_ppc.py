@@ -15,10 +15,12 @@ from sparse import GCXS, SparseArray
 from xarray import DataArray, Dataset
 
 from ._constants import (DATA_VAR_RAW, DEFAULT_DE_N_TOP_GENES_OVERLAP,
-                         DEFAULT_DE_P_VAL_THRESHOLD, METRIC_CALIBRATION,
+                         DEFAULT_DE_P_VAL_THRESHOLD)
+from ._constants import (METRIC_CALIBRATION,
                          METRIC_CV_CELL, METRIC_CV_GENE, METRIC_DIFF_EXP,
                          METRIC_ZERO_FRACTION, UNS_NAME_RGG_PPC,
                          UNS_NAME_RGG_RAW)
+from ._utils import _get_precision_recall_f1
 
 Dims = Literal["cells", "features"]
 
@@ -73,9 +75,9 @@ class PPC:
         self.count_layer_key = count_layer_key
         raw_counts = adata.layers[count_layer_key] if count_layer_key is not None else adata.X
         if isinstance(raw_counts, np.ndarray):
-            self.raw_counts = GCXS.from_numpy(raw_counts)
+            self.raw_counts = GCXS.from_numpy(raw_counts, compressed_axes=(0,))
         elif issparse(raw_counts):
-            self.raw_counts = GCXS.from_scipy_sparse(raw_counts)
+            self.raw_counts = GCXS.from_scipy_sparse(raw_counts).change_compressed_axes((0,))
         else:
             raise ValueError("raw_counts must be a numpy array or scipy sparse matrix")
         self.samples_dataset = None
@@ -137,8 +139,6 @@ class PPC:
                 batch_size=self.batch_size,
                 indices=indices,
             )
-            # TODO: remove once GCXS is in scvi-tools
-            pp_counts = GCXS.from_numpy(pp_counts)
             samples_dict[m] = DataArray(
                 data=pp_counts,
                 coords={
@@ -165,9 +165,13 @@ class PPC:
             Dimension to compute CV over.
         """
         identifier = METRIC_CV_CELL if dim == "features" else METRIC_CV_GENE
-        pp_samples = self.samples_dataset
-        std = pp_samples.std(dim=dim, skipna=False)
-        mean = pp_samples.mean(dim=dim, skipna=False)
+        mean = self.samples_dataset.mean(dim=dim, skipna=False)
+        # we use a trick to compute the std to speed it up: std = E[X^2] - E[X]^2
+        # a square followed by a sqrt is ok here because this is counts data (no negative values)
+        self.samples_dataset = np.square(self.samples_dataset)
+        std = np.sqrt(self.samples_dataset.mean(dim=dim, skipna=False) - np.square(mean))
+        self.samples_dataset = np.sqrt(self.samples_dataset)
+        # now compute the CV
         cv = std / mean
         # It's ok to make things dense here
         cv = _make_dataset_dense(cv)
@@ -312,23 +316,46 @@ class PPC:
         groups = self.adata.obs[de_groupby].astype("category").cat.categories
         df = pd.DataFrame(
             index=np.arange(len(groups) * len(models)),
-            columns=["roc_auc", "pr_auc", "lfc_mae", "lfc_pearson", "lfc_spearman", "group", "model"],
+            columns=[
+                "gene_overlap_f1",
+                "lfc_mae",
+                "lfc_pearson",
+                "lfc_spearman",
+                "roc_auc",
+                "pr_auc",
+                "group",
+                "model",
+            ],
         )
         i = 0
         for g in groups:
             raw_group_data = sc.get.rank_genes_groups_df(adata_de, group=g, key=UNS_NAME_RGG_RAW)
             raw_group_data.set_index("names", inplace=True)
             for model in de_keys.keys():
-                roc_aucs = []
-                pr_aucs = []
+                gene_overlap_f1s = []
                 lfc_maes = []
                 lfc_pearsons = []
                 lfc_spearmans = []
+                roc_aucs = []
+                pr_aucs = []
                 # Now over potential samples
                 for de_key in de_keys[model]:
                     sample_group_data = sc.get.rank_genes_groups_df(adata_approx, group=g, key=de_key)
                     sample_group_data.set_index("names", inplace=True)
+                    # compute gene overlaps
+                    all_genes = raw_group_data.index  # order doesn't matter here
+                    top_genes_raw = raw_group_data[:n_top_genes_fallback].index
+                    top_genes_sample = sample_group_data[:n_top_genes_fallback].index
+                    true_genes = np.array([0 if g not in top_genes_raw else 1 for g in all_genes])
+                    pred_genes = np.array([0 if g not in top_genes_sample else 1 for g in all_genes])
+                    gene_overlap_f1s.append(_get_precision_recall_f1(true_genes, pred_genes)[2])
+                    # compute lfc correlations
                     sample_group_data = sample_group_data.loc[raw_group_data.index]
+                    rgd, sgd = raw_group_data["logfoldchanges"], sample_group_data["logfoldchanges"]
+                    lfc_maes.append(np.mean(np.abs(rgd - sgd)))
+                    lfc_pearsons.append(pearsonr(rgd, sgd)[0])
+                    lfc_spearmans.append(spearmanr(rgd, sgd)[0])
+                    # compute auPRC and auROC
                     raw_adj_p_vals = raw_group_data["pvals_adj"]
                     true = raw_adj_p_vals < p_val_thresh
                     pred = sample_group_data["scores"]
@@ -338,13 +365,10 @@ class PPC:
                         true[np.argsort(raw_adj_p_vals)[:n_top_genes_fallback]] = 1
                     roc_aucs.append(roc_auc_score(true, pred))
                     pr_aucs.append(average_precision_score(true, pred))
-                    rgd, sgd = raw_group_data["logfoldchanges"], sample_group_data["logfoldchanges"]
-                    lfc_maes.append(np.mean(np.abs(rgd - sgd)))
-                    lfc_pearsons.append(pearsonr(rgd, sgd)[0])
-                    lfc_spearmans.append(spearmanr(rgd, sgd)[0])
                 # Mean here is over sampled datasets
                 df.loc[i, "model"] = model
                 df.loc[i, "group"] = g
+                df.loc[i, "gene_overlap_f1"] = np.mean(gene_overlap_f1s)
                 df.loc[i, "lfc_mae"] = np.mean(lfc_maes)
                 df.loc[i, "lfc_pearson"] = np.mean(lfc_pearsons)
                 df.loc[i, "lfc_spearman"] = np.mean(lfc_spearmans)

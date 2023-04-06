@@ -74,8 +74,9 @@ class PPCPlot:
         ax = plt.gca()
         _add_identity(ax, color="r", ls="--", alpha=0.5)
         # add line of best fit
-        # a, b = np.polyfit(model_metric, raw_metric, 1)
-        # plt.plot(model_metric, a*model_metric+b)
+        a, b = np.polyfit(model_metric, raw_metric, 1)
+        plt.plot(model_metric, a * model_metric + b, color="blue", ls="--", alpha=0.8, label="line of best fit")
+        ax.legend()
         # add labels and titles
         plt.xlabel("model")
         plt.ylabel("raw")
@@ -86,7 +87,6 @@ class PPCPlot:
         model_name: str,
         plot_kind: str,
         figure_size=None,
-        save_fig: bool = False,
     ):
         """
         Plot differential expression results.
@@ -99,14 +99,13 @@ class PPCPlot:
             Column name in the `adata.var` attribute containing the gene names, if different from `adata.var_names`
         figure_size
             Size of the figure to plot. If None, we will use a heuristic to determine the figure size.
-        save_fig
-            Whether to save the figure to a file. The path(s) to the saved figures will be returned.
         """
         de_metrics = self._ppc.metrics[METRIC_DIFF_EXP]
         model_de_metrics = de_metrics[de_metrics["model"] == model_name]
         del model_de_metrics["lfc_mae"]  # not on the same scale as the other ones
 
         bar_colors = {
+            "gene_overlap_f1": "#AEC9E7",
             "lfc_pearson": "#AA8FC4",
             "lfc_spearman": "#A4DE87",
             "pr_auc": "#D9A5CC",
@@ -114,11 +113,12 @@ class PPCPlot:
         }
         if plot_kind == "summary_violin":
             col_names = {
+                "gene_overlap_f1": "Gene Overlap\nF1",
                 "lfc_pearson": "LFC\nPearson",
                 "lfc_spearman": "LFC\nSpearman",
-                "pr_auc": "PR\nAUC",
-                "roc_auc": "ROC\nAUC",
+                "pr_auc": "auPRC",
             }
+            del model_de_metrics["roc_auc"]  # skip this for now, TODO fix/remove
             model_de_metrics.rename(columns=col_names, inplace=True)
             sns.set(rc={"figure.figsize": (6, 6)})
             sns.set_theme(style="white")
