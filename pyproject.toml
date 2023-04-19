@@ -125,9 +125,6 @@ ignore = [
     "D213",
 ]
 
-[tool.ruff.pydocstyle]
-convention = "numpy"
-
 [tool.ruff.per-file-ignores]
 "docs/*" = ["I"]
 "tests/*" = ["D"]
