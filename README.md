@@ -9,6 +9,15 @@
 
 Evaluation metrics for scvi-tools models
 
+
+# ⚠️ !! WE'VE MOVED !! ⚠️   
+This package is now merged into the scvi-tools package and is accessible via the `scvi.criticism` submodule.  
+As part of the transition, we've also removed the generic plotting utilities. We'll give some plotting examples in upcoming scvi tutorials but otherwise will leave the freedom to end-users to use their custom plotting for their specific use case(s).  
+Thanks for using this tool and please leave any future feedback under scvi-tools [issues](https://github.com/scverse/scvi-tools/issues) as this repo will be archived.
+
+
+**OLD INSTRUCTIONS** 👇
+
 ## Getting started
 
 Please refer to the [documentation][link-docs].
@@ -50,4 +59,4 @@ Some of the code in this package was adapted from draft code authored by [@adamg
 [scverse-discourse]: https://discourse.scverse.org/
 [issue-tracker]: https://github.com/YosefLab/scvi-criticism/issues
 [changelog]: https://scvi-criticism.readthedocs.io/en/latest/changelog.html
-[link-docs]: https://scvi-criticism.readthedocs.io
+[link-docs]: https://scvi-criticism.readthedocs.io~
